@@ -1,0 +1,51 @@
+campaign:
+  name: "smoke_test"
+  description: "Minimal campaign to verify harness end-to-end"
+  version: "1.0"
+
+target:
+  pdb_id: "5N2C"
+  chain_id: "A"
+  epitope_residues: [54, 56, 58, 60, 62, 66, 68, 113, 115, 117]
+  hotspot_residues: [56, 60, 115]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+    preserve_secondary_structure: true
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 20
+    weights: "default"
+    seed: 42
+  proteinmpnn:
+    sequences_per_backbone: 2
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 3
+    hotspot_percentage: 0.1
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+compute:
+  gpus: 1
+  memory_gb: 16
+  container: "local"
+
+output:
+  directory: "./results/smoke_test"
+  top_n_candidates: 5
+  report_format: "csv"
+  export_pdbs: true
+  keep_intermediates: true

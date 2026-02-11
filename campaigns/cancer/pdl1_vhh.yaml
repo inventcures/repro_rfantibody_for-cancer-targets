@@ -1,0 +1,40 @@
+campaign:
+  name: "pdl1_vhh_v1"
+  description: "De novo VHH targeting PD-L1 BC/DE loop region"
+  version: "1.0"
+
+target:
+  pdb_id: "5N2C"
+  chain_id: "B"
+  epitope_residues: [54, 56, 58, 60, 62, 66, 68, 113, 115, 117, 121, 123, 124]
+  hotspot_residues: [56, 115, 121]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/pdl1_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 1 — Excellent structural data
+# CHALLENGE: High surface flexibility, glycosylation
+# STRATEGY: Target BC/DE loop interface (atezolizumab-like epitope)

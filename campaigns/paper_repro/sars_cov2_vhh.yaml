@@ -1,0 +1,45 @@
+campaign:
+  name: "sars_cov2_vhh_paper_repro"
+  description: "Reproduce SARS-CoV-2 RBD VHH (known challenge) from Bennett et al. 2025"
+  version: "1.0"
+
+target:
+  pdb_id: "6M0J"
+  chain_id: "E"
+  epitope_residues: [417, 446, 449, 453, 455, 456, 475, 486, 487, 489, 493, 496, 498, 500, 501, 502, 505]
+  hotspot_residues: [455, 486, 489, 493, 501]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 9000
+  proteinmpnn:
+    sequences_per_backbone: 5
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+
+output:
+  directory: "./results/sars_cov2_vhh_paper_repro"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+  keep_intermediates: true
+
+# KNOWN CHALLENGE: Framework-mediated binding instead of CDR-mediated
+# Use as negative control / benchmark for harness validation
+# Expected: modest affinity binders with incorrect binding orientation

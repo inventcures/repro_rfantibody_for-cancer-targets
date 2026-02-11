@@ -1,0 +1,46 @@
+campaign:
+  name: "rsv_vhh_paper_repro"
+  description: "Reproduce RSV site III VHH from Bennett et al. 2025"
+  version: "1.0"
+
+target:
+  pdb_id: "4JHW"
+  chain_id: "A"
+  # NOTE: epitope/hotspot residues need literature refinement for RSV site III
+  epitope_residues: [162, 164, 167, 170, 172, 173, 176, 186, 189, 196, 198]
+  hotspot_residues: [167, 172, 196]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 9000
+  proteinmpnn:
+    sequences_per_backbone: 5
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+
+output:
+  directory: "./results/rsv_vhh_paper_repro"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+  keep_intermediates: true
+
+# Validation targets:
+# - Multiple binders at 78 nM - 1.4 uM
+# - Competition with known site III antibodies confirmed

@@ -1,0 +1,42 @@
+campaign:
+  name: "cd19_scfv_v1"
+  description: "De novo scFv targeting CD19 for B-cell malignancies (CAR-T applications)"
+  version: "1.0"
+
+target:
+  pdb_id: "6WJ7"
+  chain_id: "A"
+  epitope_residues: [77, 80, 83, 84, 85, 88, 89, 91, 128, 131, 132, 135, 141, 144]
+  hotspot_residues: [80, 84, 131, 141]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "scfv"
+  framework: "builtin:hu4D5-8"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+    L1: "8-13"
+    L2: "7"
+    L3: "9-11"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/cd19_scfv_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 3
+# NOTE: scFv format critical for CAR-T applications
+# CHALLENGE: Limited structural data, scFv stability requirements for CAR-T

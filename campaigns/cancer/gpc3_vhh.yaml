@@ -1,0 +1,39 @@
+campaign:
+  name: "gpc3_vhh_v1"
+  description: "De novo VHH targeting GPC3 for hepatocellular carcinoma"
+  version: "1.0"
+
+target:
+  pdb_id: "6V3G"
+  chain_id: "A"
+  epitope_residues: [45, 47, 52, 54, 65, 68, 71, 76, 79]
+  hotspot_residues: [45, 52, 71, 79]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/gpc3_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 2
+# CHALLENGE: Extensive heparan sulfate modifications mask epitopes
+# CHALLENGE: Limited high-resolution structural data

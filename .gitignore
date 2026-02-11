@@ -1,0 +1,16 @@
+results/
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.qv
+*.pdb
+!campaigns/**/*.pdb
+.checkpoint_*
+*.log
+.env
+weights/
+RFAntibody/

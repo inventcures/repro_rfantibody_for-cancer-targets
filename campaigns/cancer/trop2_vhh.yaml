@@ -1,0 +1,39 @@
+campaign:
+  name: "trop2_vhh_v1"
+  description: "De novo VHH targeting TROP-2 ectodomain"
+  version: "1.0"
+
+target:
+  pdb_id: "6YD6"
+  chain_id: "A"
+  epitope_residues: [62, 63, 68, 70, 71, 72, 73, 75, 76, 77, 79]
+  hotspot_residues: [62, 68, 79]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/trop2_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 1
+# CHALLENGE: Must achieve picomolar affinity for ADC applications
+# OPPORTUNITY: VHH format enables novel epitopes inaccessible to conventional mAbs

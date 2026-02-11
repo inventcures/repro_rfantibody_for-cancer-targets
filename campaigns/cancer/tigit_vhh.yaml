@@ -1,0 +1,38 @@
+campaign:
+  name: "tigit_vhh_v1"
+  description: "De novo VHH targeting TIGIT (emerging immune checkpoint)"
+  version: "1.0"
+
+target:
+  pdb_id: "6VIC"
+  chain_id: "A"
+  epitope_residues: [49, 56, 85, 93, 97, 116, 119]
+  hotspot_residues: [49, 85, 93]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/tigit_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 3
+# CHALLENGE: Incomplete structural data, epitope overlap with PVRL2

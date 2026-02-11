@@ -1,0 +1,38 @@
+campaign:
+  name: "ctla4_vhh_v1"
+  description: "De novo VHH targeting CTLA-4 FG loop region"
+  version: "1.0"
+
+target:
+  pdb_id: "4XIS"
+  chain_id: "C"
+  epitope_residues: [45, 47, 49, 50, 59, 62, 64, 68, 72, 74, 90, 122]
+  hotspot_residues: [50, 59, 68, 72]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/ctla4_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 1
+# CHALLENGE: CTLA-4 exists as homodimer; may need to bind dimer interface

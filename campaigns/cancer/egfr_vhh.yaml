@@ -1,0 +1,39 @@
+campaign:
+  name: "egfr_vhh_v1"
+  description: "De novo VHH targeting EGFR Domain III (cetuximab epitope)"
+  version: "1.0"
+
+target:
+  pdb_id: "5IUS"
+  chain_id: "A"
+  epitope_residues: [384, 388, 390, 391, 465, 467, 470, 475, 476, 489]
+  hotspot_residues: [467, 470, 489]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/egfr_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 1
+# CHALLENGE: Multiple conformational states (active/inactive), DE loop flexibility

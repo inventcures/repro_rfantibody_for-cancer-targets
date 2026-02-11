@@ -1,0 +1,40 @@
+campaign:
+  name: "cldn18_vhh_v1"
+  description: "De novo VHH targeting Claudin-18.2 for gastric/pancreatic cancer"
+  version: "1.0"
+
+target:
+  # NO DIRECT CRYSTAL STRUCTURE — requires homology model from claudin-15 (6OV7)
+  pdb_file: "structures/cldn18_homology_model.pdb"
+  chain_id: "A"
+  epitope_residues: [108, 109, 110, 111, 113, 121, 124, 130, 137]
+  hotspot_residues: [108, 111, 130]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/cldn18_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 3 — EXPLORATORY
+# CRITICAL WARNING: Homology model uncertainty is HIGH
+# RECOMMENDED: Use AF2/AF3 prediction or wait for experimental structure

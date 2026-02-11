@@ -1,0 +1,38 @@
+campaign:
+  name: "il6r_vhh_v1"
+  description: "De novo VHH targeting IL-6R (autoimmune / Castleman disease)"
+  version: "1.0"
+
+target:
+  pdb_id: "6S36"
+  chain_id: "A"
+  epitope_residues: [96, 98, 99, 101, 103, 105, 174, 176, 177, 179, 180, 183, 185]
+  hotspot_residues: [99, 103, 177, 180]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/il6r_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# CHALLENGE: Must block IL-6 binding without affecting trans-signaling selectivity
+# Well-validated target (tocilizumab, sarilumab) provides benchmarks

@@ -1,0 +1,51 @@
+campaign:
+  name: "phox2b_scfv_paper_repro"
+  description: "Reproduce PHOX2B-HLA scFv for neuroblastoma from Bennett et al. 2025"
+  version: "1.0"
+
+target:
+  # PHOX2B peptide-HLA-C*07:02 complex — requires model or structure deposition
+  pdb_file: "structures/phox2b_hla_c0702.pdb"
+  chain_id: "A"
+  # R6 residue critical for specificity
+  epitope_residues: [5, 6, 7, 8, 62, 66, 69, 70, 73, 74, 77, 80, 150, 152, 155, 159, 163]
+  hotspot_residues: [6, 66, 73, 155]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "scfv"
+  framework: "builtin:hu4D5-8"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+    L1: "8-13"
+    L2: "7"
+    L3: "9-11"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 9000
+  proteinmpnn:
+    sequences_per_backbone: 5
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+
+output:
+  directory: "./results/phox2b_scfv_paper_repro"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+  keep_intermediates: true
+
+# Validation targets:
+# - 6 binders, best Kd = 400 nM monomer
+# - Tetramer Kd = 68 nM
+# - Specific for PHOX2B, no cross-reactivity with CSPG4
+# CHALLENGE: pMHC = flat surface, low stability at R6

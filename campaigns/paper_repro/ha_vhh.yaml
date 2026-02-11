@@ -1,0 +1,46 @@
+campaign:
+  name: "ha_vhh_paper_repro"
+  description: "Reproduce HA stem VHH designs from Bennett et al. 2025"
+  version: "1.0"
+
+target:
+  pdb_id: "4HMG"
+  chain_id: "A"
+  epitope_residues: [18, 19, 20, 21, 38, 39, 40, 41, 42, 45, 46, 49, 52, 53, 56]
+  hotspot_residues: [19, 40, 42, 45, 53]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 9000
+  proteinmpnn:
+    sequences_per_backbone: 5
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+
+output:
+  directory: "./results/ha_vhh_paper_repro"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+  keep_intermediates: true
+
+# Validation targets (from paper):
+# - Multiple binders at 78 nM - 1.4 uM
+# - Top design RMSD ~1.45 A vs cryo-EM
+# - ~66% HA particles bound in cryo-EM

@@ -1,0 +1,40 @@
+campaign:
+  name: "her2_vhh_v1"
+  description: "De novo VHH targeting HER2 Domain IV (trastuzumab epitope region)"
+  version: "1.0"
+
+target:
+  pdb_id: "3N85"
+  chain_id: "A"
+  epitope_residues: [557, 558, 560, 561, 567, 570, 571, 573, 574, 576, 579, 580, 583, 584, 586, 592, 596, 603]
+  hotspot_residues: [560, 573, 579, 592]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/her2_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 1 — 1.55 A resolution structure
+# CHALLENGE: Must achieve picomolar affinity for clinical relevance
+# STRATEGY: Domain IV deep pocket, extended H3 for better engagement

@@ -1,0 +1,47 @@
+campaign:
+  name: "gne_stabilizer_vhh_v1"
+  description: "VHH stabilizer for GNE mutant enzyme (GNE myopathy) — EXPLORATORY"
+  version: "1.0"
+
+target:
+  pdb_id: "1FOZ"
+  chain_id: "A"
+  epitope_residues: [10, 14, 41, 92, 94, 95, 98, 137, 140, 143]
+  hotspot_residues: [95, 98, 140, 143]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-16"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+  proteinmpnn:
+    sequences_per_backbone: 10
+    temperature: 0.3
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/gne_stabilizer_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# UNCONVENTIONAL: Enzyme stabilization, NOT blockade
+# Must NOT occlude NAG binding pocket (substrate accessibility)
+# Must accommodate known GNE mutations: L127P, D207N, M712V
+# Enzyme must remain catalytically active when bound
+# Intracellular target — delivery is a major challenge
+# Extended H3 to span domain interface

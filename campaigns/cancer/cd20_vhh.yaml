@@ -1,0 +1,39 @@
+campaign:
+  name: "cd20_vhh_v1"
+  description: "De novo VHH targeting CD20 for B-cell lymphoma"
+  version: "1.0"
+
+target:
+  pdb_id: "5Y5M"
+  chain_id: "A"
+  epitope_residues: [160, 161, 162, 167, 168, 169, 170, 172, 174, 175, 176, 177]
+  hotspot_residues: [167, 168, 172]
+  truncation:
+    enabled: false
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "5-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+output:
+  directory: "./results/cd20_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true
+
+# Tier 2
+# CHALLENGE: Small accessible epitope (transmembrane protein)
+# CHALLENGE: Requires CDC for efficacy — VHH may lack Fc effector functions
