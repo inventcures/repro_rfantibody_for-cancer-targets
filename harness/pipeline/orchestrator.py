@@ -48,6 +48,7 @@ class PipelineOrchestrator:
         # Stage 1: RFdiffusion
         if not self._checkpoint_exists("stage1"):
             logger.info("=== Stage 1: RFdiffusion ===")
+            weights_path = self.rfantibody_root / "weights" / "RFdiffusion_Ab.pt"
             rfd_inputs = RFdiffusionInputs(
                 target_pdb=inputs.target_pdb,
                 framework_hlt=inputs.framework_hlt,
@@ -55,6 +56,7 @@ class PipelineOrchestrator:
                 cdr_loop_string=inputs.cdr_loop_string,
                 num_designs=self.config.pipeline.rfdiffusion.num_designs,
                 seed=self.config.pipeline.rfdiffusion.seed,
+                weights_path=weights_path if weights_path.exists() else None,
             )
             run_rfdiffusion(rfd_inputs, backbones_qv, self.rfantibody_root)
             self._save_checkpoint("stage1")

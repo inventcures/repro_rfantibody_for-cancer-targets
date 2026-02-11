@@ -1,0 +1,41 @@
+campaign:
+  name: "msln_nterm_vhh_v1"
+  description: "De novo VHH targeting mesothelin N-terminal epitope for PDAC. Template: 4F3F (MORAb-009/amatuximab Fab, 2.6A). 85-89% PDAC expression. VHH for stromal penetration."
+  version: "1.0"
+
+target:
+  pdb_id: "4F3F"
+  chain_id: "A"
+  epitope_residues: [296, 298, 299, 300, 302, 304, 306, 310, 312, 314, 316, 318, 320, 338, 340, 342, 344, 346, 348]
+  hotspot_residues: [299, 310, 318, 342]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "7-13"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+    seed: 46
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/msln_nterm_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true

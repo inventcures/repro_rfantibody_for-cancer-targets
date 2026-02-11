@@ -1,0 +1,41 @@
+campaign:
+  name: "gpc2_vhh_v1"
+  description: "De novo VHH targeting GPC2 for neuroblastoma. Template: 6WJL (D3 Fab, 3.3A). Discontinuous epitope on helices 2/12/13. Best differential expression among novel NB targets."
+  version: "1.0"
+
+target:
+  pdb_id: "6WJL"
+  chain_id: "A"
+  epitope_residues: [44, 46, 48, 49, 50, 51, 53, 55, 268, 270, 272, 274, 276, 278, 284, 286, 288, 290, 292, 294]
+  hotspot_residues: [48, 55, 274, 290]
+  truncation:
+    enabled: true
+    buffer_angstroms: 12.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-15"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+    seed: 45
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -18.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/gpc2_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true

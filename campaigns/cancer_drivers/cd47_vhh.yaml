@@ -1,0 +1,41 @@
+campaign:
+  name: "cd47_vhh_v1"
+  description: "De novo VHH targeting CD47 SIRPa-competitive face for GBM. Template: 5IWL (magrolimab/5F9 diabody). Redirects TAMs (50% of GBM tumor mass)."
+  version: "1.0"
+
+target:
+  pdb_id: "5IWL"
+  chain_id: "C"
+  epitope_residues: [2, 3, 4, 5, 34, 35, 36, 37, 99, 100, 101, 102, 103, 104, 106]
+  hotspot_residues: [37, 101, 102, 104]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-15"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+    seed: 47
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/cd47_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true

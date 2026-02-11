@@ -1,0 +1,41 @@
+campaign:
+  name: "epha2_vhh_v1"
+  description: "De novo VHH targeting EphA2 for GBM. Template: 3SKJ (1C1 Fab, 2.5A). Dual tumor+vasculature expression. Design targets alternative epitope to avoid 1C1 vascular toxicity."
+  version: "1.0"
+
+target:
+  pdb_id: "3SKJ"
+  chain_id: "E"
+  epitope_residues: [43, 45, 47, 49, 51, 53, 55, 68, 70, 72, 74, 99, 101, 103, 105, 107, 109, 125, 127, 129, 131]
+  hotspot_residues: [47, 72, 103, 127]
+  truncation:
+    enabled: true
+    buffer_angstroms: 10.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-15"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+    seed: 48
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/epha2_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true

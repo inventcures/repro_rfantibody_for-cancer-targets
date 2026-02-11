@@ -1,0 +1,41 @@
+campaign:
+  name: "ceacam5_vhh_v1"
+  description: "De novo VHH targeting CEACAM5 A3-B3 domains for PDAC. Template: 8BW0 (tusamitamab Fab, 3.11A cryo-EM). EBC-129 ADC showed 20% ORR in PDAC (ASCO 2025)."
+  version: "1.0"
+
+target:
+  pdb_id: "8BW0"
+  chain_id: "C"
+  epitope_residues: [606, 607, 609, 610, 612, 613, 622, 624, 626, 628, 630, 632, 635, 636, 637, 639, 641]
+  hotspot_residues: [612, 622, 636, 639]
+  truncation:
+    enabled: true
+    buffer_angstroms: 12.0
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "8-15"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 10000
+    seed: 49
+
+filtering:
+  pae_threshold: 12.0
+  rmsd_threshold: 2.5
+  ddg_threshold: -18.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/ceacam5_vhh_v1"
+  top_n_candidates: 50
+  report_format: "both"
+  export_pdbs: true

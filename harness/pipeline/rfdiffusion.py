@@ -33,7 +33,7 @@ def run_rfdiffusion(
     Calls the upstream Hydra-style inference script and writes the output
     to a Quiver (.qv) file.
     """
-    script = rfantibody_root / "src" / "rfantibody" / "scripts" / "rfdiffusion_inference.py"
+    script = rfantibody_root / "scripts" / "rfdiffusion_inference.py"
 
     cmd = [
         "python", str(script),
@@ -50,7 +50,7 @@ def run_rfdiffusion(
         cmd.append(f"inference.ckpt_override_path={inputs.weights_path}")
 
     if inputs.seed is not None:
-        cmd.append(f"inference.seed={inputs.seed}")
+        cmd.append(f"+inference.seed={inputs.seed}")
 
     logger.info("Stage 1 (RFdiffusion): generating %d backbones", inputs.num_designs)
 
