@@ -6,16 +6,10 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from harness._bio_utils import THREE_TO_ONE, find_chain
 from harness.config.defaults import HYDROPHOBIC_RESIDUES
 
 logger = logging.getLogger(__name__)
-
-ONE_LETTER = {
-    "ALA": "A", "CYS": "C", "ASP": "D", "GLU": "E", "PHE": "F",
-    "GLY": "G", "HIS": "H", "ILE": "I", "LYS": "K", "LEU": "L",
-    "MET": "M", "ASN": "N", "PRO": "P", "GLN": "Q", "ARG": "R",
-    "SER": "S", "THR": "T", "VAL": "V", "TRP": "W", "TYR": "Y",
-}
 
 
 @dataclass
@@ -37,7 +31,7 @@ def validate_hotspots(
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure(target_pdb.stem, str(target_pdb))
 
-    chain = _find_chain(structure, chain_id)
+    chain = find_chain(structure, chain_id)
     if chain is None:
         result.valid = False
         result.errors.append(f"Chain {chain_id} not found in {target_pdb}")
@@ -55,7 +49,7 @@ def validate_hotspots(
         res = residue_map.get(resid)
         if res is None:
             continue
-        aa = ONE_LETTER.get(res.get_resname(), "")
+        aa = THREE_TO_ONE.get(res.get_resname(), "")
         if aa in HYDROPHOBIC_RESIDUES:
             hydrophobic_count += 1
 
@@ -89,14 +83,6 @@ def validate_framework_hlt(framework_pdb: Path, antibody_format: str) -> Validat
         result.errors.append("scFv framework PDB missing light chain 'L'")
 
     return result
-
-
-def _find_chain(structure, chain_id: str):
-    for model in structure:
-        for chain in model:
-            if chain.id == chain_id:
-                return chain
-    return None
 
 
 def _check_patch_contiguity(

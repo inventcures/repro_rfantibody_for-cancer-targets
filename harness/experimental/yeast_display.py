@@ -87,7 +87,7 @@ def generate_ysd_protocol(config: CampaignConfig, n_constructs: int, output_dir:
     """Generate a YSD screening protocol document."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    target_id = config.target.pdb_id or Path(config.target.pdb_file).stem
+    target_id = config.target.target_id
     concs = config.experimental.target_concentrations
     conc_high = concs[0] if concs else 1400.0
     conc_low = concs[1] if len(concs) > 1 else 78.0

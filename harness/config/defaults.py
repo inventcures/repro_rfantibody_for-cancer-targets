@@ -26,16 +26,4 @@ BUILTIN_FRAMEWORKS: dict[str, dict] = {
     },
 }
 
-DEFAULT_FILTERING = {
-    "pae_threshold": 10.0,
-    "rmsd_threshold": 2.0,
-    "ddg_threshold": -20.0,
-}
-
-DEFAULT_PIPELINE = {
-    "rfdiffusion": {"num_designs": 10000, "weights": "default", "seed": None},
-    "proteinmpnn": {"sequences_per_backbone": 5, "temperature": 0.2},
-    "rf2": {"recycling_iterations": 10, "hotspot_percentage": 0.1},
-}
-
 RCSB_BASE_URL = "https://files.rcsb.org/download"

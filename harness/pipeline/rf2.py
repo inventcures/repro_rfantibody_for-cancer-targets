@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-import os
-import subprocess
 from pathlib import Path
+
+from harness.pipeline._subprocess import run_pipeline_command
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +24,12 @@ def run_rf2(
         "python", str(script),
         f"input.quiver={input_qv}",
         f"output.quiver={output_qv}",
+        f"predict.n_recycles={recycling_iterations}",
     ]
 
     logger.info("Stage 3 (RF2): recycling=%d", recycling_iterations)
-    logger.debug("Command: %s", " ".join(cmd))
 
-    run_env = {**os.environ, **(env or {})}
-
-    result = subprocess.run(cmd, capture_output=True, text=True, env=run_env)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"RF2 failed (exit {result.returncode}):\n{result.stderr}"
-        )
+    run_pipeline_command(cmd, "RF2", env=env)
 
     logger.info("Stage 3 complete → %s", output_qv)
     return output_qv

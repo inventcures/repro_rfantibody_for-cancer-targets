@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from harness.pipeline._subprocess import run_pipeline_command
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +53,8 @@ def run_rfdiffusion(
         cmd.append(f"inference.seed={inputs.seed}")
 
     logger.info("Stage 1 (RFdiffusion): generating %d backbones", inputs.num_designs)
-    logger.debug("Command: %s", " ".join(cmd))
 
-    import os
-    run_env = {**os.environ, **(env or {})}
-
-    result = subprocess.run(cmd, capture_output=True, text=True, env=run_env)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"RFdiffusion failed (exit {result.returncode}):\n{result.stderr}"
-        )
+    run_pipeline_command(cmd, "RFdiffusion", env=env)
 
     logger.info("Stage 1 complete → %s", output_qv)
     return output_qv

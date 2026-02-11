@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from harness._bio_utils import THREE_TO_ONE
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -85,15 +87,18 @@ def _write_summary_csv(top: pd.DataFrame, output_dir: Path) -> None:
 
 
 def _write_fasta(output_dir: Path, tags: list[str]) -> None:
-    """Write a FASTA file with CDR sequences extracted from exported PDBs."""
+    """Write a FASTA file with sequences extracted from exported PDBs."""
     fasta_lines: list[str] = []
     for tag in tags:
         pdb_path = output_dir / f"{tag}.pdb"
         if not pdb_path.exists():
             continue
-        seq = _extract_sequence_from_pdb(pdb_path, chain="H")
-        if seq:
-            fasta_lines.append(f">{tag}\n{seq}\n")
+        h_seq = _extract_sequence_from_pdb(pdb_path, chain="H")
+        l_seq = _extract_sequence_from_pdb(pdb_path, chain="L")
+        if h_seq:
+            fasta_lines.append(f">{tag}_H\n{h_seq}\n")
+        if l_seq:
+            fasta_lines.append(f">{tag}_L\n{l_seq}\n")
 
     if fasta_lines:
         (output_dir / "sequences.fasta").write_text("".join(fasta_lines))
@@ -101,18 +106,12 @@ def _write_fasta(output_dir: Path, tags: list[str]) -> None:
 
 def _extract_sequence_from_pdb(pdb_path: Path, chain: str = "H") -> str:
     """Quick-and-dirty sequence extraction from ATOM records of a given chain."""
-    three_to_one = {
-        "ALA": "A", "CYS": "C", "ASP": "D", "GLU": "E", "PHE": "F",
-        "GLY": "G", "HIS": "H", "ILE": "I", "LYS": "K", "LEU": "L",
-        "MET": "M", "ASN": "N", "PRO": "P", "GLN": "Q", "ARG": "R",
-        "SER": "S", "THR": "T", "VAL": "V", "TRP": "W", "TYR": "Y",
-    }
     seen: dict[int, str] = {}
     with open(pdb_path) as f:
         for line in f:
-            if line.startswith("ATOM") and line[21] == chain:
+            if line.startswith("ATOM") and len(line) > 26 and line[21] == chain:
                 resnum = int(line[22:26])
                 resname = line[17:20].strip()
                 if resnum not in seen:
-                    seen[resnum] = three_to_one.get(resname, "X")
+                    seen[resnum] = THREE_TO_ONE.get(resname, "X")
     return "".join(v for _, v in sorted(seen.items()))

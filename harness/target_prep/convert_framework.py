@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 from pathlib import Path
+
+from harness.pipeline._subprocess import run_pipeline_command
 
 from harness.config.defaults import BUILTIN_FRAMEWORKS
 
@@ -77,13 +78,7 @@ def _convert_custom(
     if antibody_format == "vhh":
         cmd.append("--nanobody")
 
-    logger.info("Converting framework: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"chothia_to_HLT.py failed (exit {result.returncode}):\n"
-            f"{result.stderr}"
-        )
+    run_pipeline_command(cmd, "chothia_to_HLT.py")
 
     logger.info("Converted framework → %s", output_path)
     return output_path

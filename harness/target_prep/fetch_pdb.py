@@ -26,7 +26,12 @@ def fetch_pdb(pdb_id: str, output_dir: Path, chain_id: str | None = None) -> Pat
         logger.info("PDB %s already downloaded: %s", pdb_id, raw_path)
     else:
         logger.info("Downloading %s from RCSB ...", pdb_id)
-        urlretrieve(url, raw_path)
+        try:
+            urlretrieve(url, raw_path)
+        except Exception:
+            if raw_path.exists():
+                raw_path.unlink()
+            raise
         logger.info("Saved %s", raw_path)
 
     if chain_id is None:

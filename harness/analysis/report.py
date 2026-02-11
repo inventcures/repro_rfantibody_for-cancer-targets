@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as html_mod
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -66,9 +67,10 @@ def _write_html(
                 f"<td>{s.max():.2f}</td></tr>\n"
             )
 
+    esc = html_mod.escape
     html = f"""<!DOCTYPE html>
 <html><head>
-<title>Campaign Report: {config.campaign.name}</title>
+<title>Campaign Report: {esc(config.campaign.name)}</title>
 <style>
 body {{ font-family: system-ui, sans-serif; max-width: 960px; margin: 2em auto; }}
 h1 {{ border-bottom: 2px solid #333; padding-bottom: 0.3em; }}
@@ -78,8 +80,8 @@ table.data th {{ background: #f4f4f4; }}
 .meta {{ background: #f8f8f8; padding: 1em; border-radius: 4px; margin-bottom: 1.5em; }}
 </style>
 </head><body>
-<h1>Campaign: {config.campaign.name}</h1>
-<p>{config.campaign.description}</p>
+<h1>Campaign: {esc(config.campaign.name)}</h1>
+<p>{esc(config.campaign.description or '')}</p>
 
 <div class="meta">
 <strong>Target</strong>: {config.target.pdb_id or config.target.pdb_file} chain {config.target.chain_id}<br>

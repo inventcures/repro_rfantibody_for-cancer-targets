@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -30,29 +31,35 @@ def run_stage_parallel(
     chunks = _split_quiver(input_qv, num_gpus, work_dir, rfantibody_root)
 
     outputs: list[Path] = []
-    processes: list[subprocess.Popen] = []
+    threads: list[threading.Thread] = []
+    failures: list[tuple[int, Exception]] = []
+    lock = threading.Lock()
+
+    def _run(fn, inp, outp, e, gid):
+        try:
+            fn(inp, outp, e)
+        except Exception as exc:
+            logger.exception("Parallel stage failed on GPU %d", gid)
+            with lock:
+                failures.append((gid, exc))
 
     for gpu_id, chunk in enumerate(chunks):
         out = chunk.with_name(f"{chunk.stem}_out.qv")
         outputs.append(out)
         env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu_id)}
 
-        # Each stage_fn returns a Path; here we launch them concurrently
-        # by wrapping in a Popen-style approach via threading
-        import threading
-
-        def _run(fn, inp, outp, e):
-            try:
-                fn(inp, outp, e)
-            except Exception:
-                logger.exception("Parallel stage failed on GPU %d", gpu_id)
-
-        t = threading.Thread(target=_run, args=(stage_fn, chunk, out, env))
+        t = threading.Thread(target=_run, args=(stage_fn, chunk, out, env, gpu_id))
         t.start()
-        processes.append(t)
+        threads.append(t)
 
-    for t in processes:
+    for t in threads:
         t.join()
+
+    if failures:
+        gpu_ids = [str(gid) for gid, _ in failures]
+        raise RuntimeError(
+            f"Parallel stage failed on GPU(s) {', '.join(gpu_ids)}: {failures[0][1]}"
+        )
 
     merged = work_dir / f"{input_qv.stem}_merged.qv"
     _merge_quivers(outputs, merged)

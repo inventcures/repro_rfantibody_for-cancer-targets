@@ -75,9 +75,9 @@ def generate_spr_protocol(config: CampaignConfig, output_dir: Path) -> Path:
     """Generate an SPR binding characterization protocol."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    target_id = config.target.pdb_id or Path(config.target.pdb_file).stem
+    target_id = config.target.target_id
     concentrations = config.experimental.spr_concentrations
-    conc_str = ", ".join(f"{c}" for c in concentrations) + " nM"
+    conc_str = ", ".join(f"{c}" for c in concentrations) + " nM" if concentrations else "none configured"
 
     conc_table = "| # | Concentration (nM) |\n|---|--------------------|\n"
     for i, c in enumerate(concentrations, 1):

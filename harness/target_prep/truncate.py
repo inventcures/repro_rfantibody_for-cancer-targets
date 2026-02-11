@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from harness._bio_utils import find_chain
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,9 @@ def truncate_target(
 
     class _EpitopeProximitySelect(Select):
         def accept_residue(self, residue):
+            parent_chain = residue.get_parent()
+            if parent_chain.id != chain_id:
+                return True
             return residue.id[1] in keep_ids
 
     if output_path is None:
@@ -36,15 +41,7 @@ def truncate_target(
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure(pdb_path.stem, str(pdb_path))
 
-    target_chain = None
-    for model in structure:
-        for chain in model:
-            if chain.id == chain_id:
-                target_chain = chain
-                break
-        if target_chain is not None:
-            break
-
+    target_chain = find_chain(structure, chain_id)
     if target_chain is None:
         raise ValueError(f"Chain {chain_id} not found in {pdb_path}")
 

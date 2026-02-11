@@ -62,9 +62,16 @@ def generate_synthesis_order(
     return csv_path
 
 
+STOP_CODON = "TAA"
+
+
 def codon_optimize(protein_seq: str) -> str:
-    """Simple yeast (S. cerevisiae) codon optimization using preferred codons."""
-    return "".join(YEAST_CODON_TABLE.get(aa, "NNN") for aa in protein_seq.upper())
+    """Simple yeast (S. cerevisiae) codon optimization using preferred codons.
+
+    Appends a TAA stop codon (preferred in S. cerevisiae).
+    """
+    codons = "".join(YEAST_CODON_TABLE.get(aa, "NNN") for aa in protein_seq.upper())
+    return codons + STOP_CODON
 
 
 def _parse_fasta(path: Path) -> list[tuple[str, str]]:

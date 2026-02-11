@@ -7,11 +7,7 @@ from typing import Optional
 
 import yaml
 
-from harness.config.defaults import (
-    BUILTIN_FRAMEWORKS,
-    DEFAULT_CDR_RANGES,
-    HYDROPHOBIC_RESIDUES,
-)
+from harness.config.defaults import BUILTIN_FRAMEWORKS, DEFAULT_CDR_RANGES
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +34,14 @@ class TargetConfig:
     epitope_residues: list[int] = field(default_factory=list)
     hotspot_residues: list[int] = field(default_factory=list)
     truncation: TruncationConfig = field(default_factory=TruncationConfig)
+
+    @property
+    def target_id(self) -> str:
+        if self.pdb_id:
+            return self.pdb_id
+        if self.pdb_file:
+            return Path(self.pdb_file).stem
+        return "unknown"
 
 
 @dataclass
@@ -273,6 +277,9 @@ def load_config(path: str | Path) -> CampaignConfig:
     path = Path(path)
     with open(path) as f:
         raw = yaml.safe_load(f)
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid campaign config: {path} (expected YAML mapping, got {type(raw).__name__})")
 
     campaign_data = raw.get("campaign", {})
     target_data = raw.get("target", {})
