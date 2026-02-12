@@ -48,11 +48,11 @@ def extract_chain(pdb_path: Path, chain_id: str, output_dir: Path) -> Path:
         def accept_chain(self, chain):
             return chain.id == chain_id
 
+        def accept_residue(self, residue):
+            return residue.id[0] == " "
+
     stem = pdb_path.stem
     out_path = output_dir / f"{stem}_chain{chain_id}.pdb"
-    if out_path.exists():
-        logger.info("Chain-extracted PDB already exists: %s", out_path)
-        return out_path
 
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure(stem, str(pdb_path))

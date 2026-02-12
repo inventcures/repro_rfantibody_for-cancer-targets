@@ -54,6 +54,16 @@ def truncate_target(
 
     keep_ids = _residues_within_buffer(target_chain, epitope_coords, buffer_angstroms)
 
+    min_epitope = min(epitope_residues)
+    max_epitope = max(epitope_residues)
+    pre_truncation = len(keep_ids)
+    keep_ids = {r for r in keep_ids if r >= min_epitope}
+    if pre_truncation != len(keep_ids):
+        logger.info(
+            "Excluded %d residues below epitope start (res < %d)",
+            pre_truncation - len(keep_ids), min_epitope,
+        )
+
     if preserve_secondary_structure:
         keep_ids = _extend_to_ss_elements(target_chain, keep_ids)
 

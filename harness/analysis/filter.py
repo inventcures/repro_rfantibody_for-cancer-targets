@@ -11,16 +11,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PAE_ALIASES = ["pae", "pae_interaction", "pae_int", "PAE"]
+RMSD_ALIASES = ["rmsd", "RMSD", "ca_rmsd", "bb_rmsd"]
+DDG_ALIASES = ["ddg", "dG_separated", "ddG", "dG"]
+
+
+def _find_column(df: pd.DataFrame, aliases: list[str]) -> str | None:
+    for alias in aliases:
+        if alias in df.columns:
+            return alias
+    return None
+
 
 def extract_scores(predictions_qv: Path, rfantibody_root: Path) -> pd.DataFrame:
     """Extract QV_SCORE lines from a predictions Quiver file into a DataFrame.
 
     Falls back to parsing the Quiver text directly if ``qvscorefile`` is not
-    available.  Expected columns: tag, pae, rmsd, ddg (when present).
+    available.
     """
-    qvscorefile = rfantibody_root / "bin" / "qvscorefile"
-    if qvscorefile.exists():
-        return _extract_via_tool(predictions_qv, qvscorefile)
+    import shutil
+
+    qvscorefile_bin = shutil.which("qvscorefile")
+    if qvscorefile_bin:
+        return _extract_via_tool(predictions_qv, Path(qvscorefile_bin))
     return _extract_from_text(predictions_qv)
 
 
@@ -31,19 +44,39 @@ def apply_filters(
     ddg_threshold: float | None = -20.0,
 ) -> pd.DataFrame:
     """Filter designs by metric thresholds. Returns rows that pass ALL filters."""
-    mask = (scores["pae"] < pae_threshold) & (scores["rmsd"] < rmsd_threshold)
+    import pandas as pd
 
-    if ddg_threshold is not None and "ddg" in scores.columns:
-        mask &= scores["ddg"] < ddg_threshold
+    logger.info("Available score columns: %s", list(scores.columns))
+
+    pae_col = _find_column(scores, PAE_ALIASES)
+    rmsd_col = _find_column(scores, RMSD_ALIASES)
+    ddg_col = _find_column(scores, DDG_ALIASES)
+
+    mask = pd.Series(True, index=scores.index)
+
+    if pae_col:
+        mask &= scores[pae_col] < pae_threshold
+    else:
+        logger.warning("No PAE column found (tried %s) — skipping pAE filter", PAE_ALIASES)
+
+    if rmsd_col:
+        mask &= scores[rmsd_col] < rmsd_threshold
+    else:
+        logger.warning("No RMSD column found (tried %s) — skipping RMSD filter", RMSD_ALIASES)
+
+    if ddg_threshold is not None and ddg_col:
+        mask &= scores[ddg_col] < ddg_threshold
 
     filtered = scores[mask].copy()
     logger.info(
-        "Filtering: %d / %d passed (pAE<%.1f, RMSD<%.1f%s)",
+        "Filtering: %d / %d passed (pAE<%.1f [col=%s], RMSD<%.1f [col=%s]%s)",
         len(filtered),
         len(scores),
         pae_threshold,
+        pae_col or "N/A",
         rmsd_threshold,
-        f", ddG<{ddg_threshold}" if ddg_threshold is not None else "",
+        rmsd_col or "N/A",
+        f", ddG<{ddg_threshold} [col={ddg_col}]" if ddg_threshold is not None and ddg_col else "",
     )
     return filtered
 
@@ -91,6 +124,6 @@ def _extract_from_text(qv_path: Path) -> pd.DataFrame:
 
     if not records:
         logger.warning("No QV_SCORE lines found in %s", qv_path)
-        return pd.DataFrame(columns=["tag", "pae", "rmsd"])
+        return pd.DataFrame(columns=["tag"])
 
     return pd.DataFrame(records)

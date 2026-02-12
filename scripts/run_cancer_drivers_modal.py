@@ -140,7 +140,7 @@ rfab_image = (
         "torchdata==0.7.1",
         "pydantic",
         "psutil>=5.8",
-        "scipy>=1.1",
+        "scipy>=1.7.3",
         "requests",
         "pyyaml>=6.0",
         "pandas>=2.0",
@@ -166,6 +166,12 @@ rfab_image = (
         " && wget -q https://files.ipd.uw.edu/pub/RFantibody/RF2_ab.pt",
         secrets=[modal.Secret.from_name("github-token")],
     )
+    .add_local_file(
+        str(repo_root / "scripts" / "patch_rfantibody.py"),
+        remote_path="/tmp/patch_rfantibody.py",
+        copy=True,
+    )
+    .run_commands("python /tmp/patch_rfantibody.py")
     .add_local_dir(str(repo_root / "harness"), remote_path=f"{HARNESS_PATH}/harness", copy=True)
     .add_local_file(
         str(repo_root / "pyproject.toml"),
@@ -217,6 +223,75 @@ def _save_batch_state_remote(state: dict) -> None:
     state["updated_at"] = _utcnow()
     Path(BATCH_STATE_FILE).write_text(json.dumps(state, indent=2))
     results_volume.commit()
+
+
+@app.function(
+    image=rfab_image,
+    gpu="A100-80GB",
+    volumes={RESULTS_MOUNT: results_volume},
+    timeout=3600,
+)
+def test_rfantibody_example(use_9lme: bool = False) -> dict:
+    """Run RFAntibody example or a custom 9LME test."""
+    import subprocess
+
+    env = {**__import__("os").environ, "HYDRA_FULL_ERROR": "1"}
+
+    if use_9lme:
+        from urllib.request import urlretrieve
+        import os
+
+        os.makedirs(f"{RESULTS_MOUNT}/test_9lme", exist_ok=True)
+        raw_pdb = f"{RESULTS_MOUNT}/test_9lme/9LME.pdb"
+        urlretrieve("https://files.rcsb.org/download/9LME.pdb", raw_pdb)
+
+        from Bio.PDB import PDBParser, PDBIO, Select
+
+        class CleanChainA(Select):
+            def accept_chain(self, chain):
+                return chain.id == "A"
+            def accept_residue(self, residue):
+                return residue.id[0] == " "
+
+        parser = PDBParser(QUIET=True)
+        struct = parser.get_structure("9LME", raw_pdb)
+        io = PDBIO()
+        io.set_structure(struct)
+        clean_path = f"{RESULTS_MOUNT}/test_9lme/9LME_chainA_clean.pdb"
+        io.save(clean_path, CleanChainA())
+        print(f"Extracted clean chain A: {clean_path}")
+
+        cmd = [
+            "rfdiffusion",
+            "--target", clean_path,
+            "--framework", f"{RFANTIBODY_PATH}/scripts/examples/example_inputs/h-NbBCII10.pdb",
+            "--output-quiver", f"{RESULTS_MOUNT}/test_9lme/designs.qv",
+            "--design-loops", "H1:7,H2:6,H3:5-13",
+            "--hotspots", "A33,A54,A76,A101",
+            "--diffuser-t", "50",
+            "--num-designs", "2",
+            "--weights", f"{RFANTIBODY_PATH}/weights/RFdiffusion_Ab.pt",
+        ]
+    else:
+        examples = f"{RFANTIBODY_PATH}/scripts/examples/example_inputs"
+        cmd = [
+            "python", f"{RFANTIBODY_PATH}/scripts/rfdiffusion_inference.py",
+            "--config-name", "antibody",
+            f"antibody.target_pdb={examples}/flu_HA.pdb",
+            f"antibody.framework_pdb={examples}/h-NbBCII10.pdb",
+            f"inference.quiver={RESULTS_MOUNT}/test_example.qv",
+            "antibody.design_loops=[H1:7,H2:6,H3:5-13]",
+            "ppi.hotspot_res=[B146,B170,B177]",
+            "diffuser.T=50",
+            "inference.num_designs=2",
+            f"inference.ckpt_override_path={RFANTIBODY_PATH}/weights/RFdiffusion_Ab.pt",
+        ]
+
+    print(f"CMD: {' '.join(cmd)}")
+    proc = subprocess.run(cmd, text=True, capture_output=True, env=env)
+    print("STDOUT:", proc.stdout[-5000:] if proc.stdout else "(empty)")
+    print("STDERR:", proc.stderr[-5000:] if proc.stderr else "(empty)")
+    return {"success": proc.returncode == 0, "returncode": proc.returncode}
 
 
 @app.function(
@@ -331,11 +406,21 @@ def main(
     campaigns: str = "",
     dry_run: bool = False,
     reset: bool = False,
+    test: bool = False,
 ):
     """Discover configs locally, check for prior progress, dispatch to Modal GPUs."""
     from tqdm import tqdm
 
     _setup_logging()
+
+    if test:
+        use_9lme = campaigns == "9lme"
+        label = "9LME chain A" if use_9lme else "flu_HA built-in"
+        log.info("Running test: %s + NbBCII10, 2 designs...", label)
+        result = test_rfantibody_example.remote(use_9lme=use_9lme)
+        status = "PASSED" if result["success"] else "FAILED"
+        log.info("Test: %s (exit %d)", status, result["returncode"])
+        return
 
     configs = _discover_configs(config_dir, campaigns)
     if not configs:

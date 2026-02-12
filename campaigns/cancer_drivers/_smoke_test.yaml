@@ -1,0 +1,47 @@
+campaign:
+  name: "b7h3_vhh_smoke"
+  description: "Smoke test: 5 designs to verify full 3-stage pipeline"
+  version: "1.0"
+
+target:
+  pdb_id: "9LME"
+  chain_id: "A"
+  epitope_residues: [29, 30, 31, 33, 35, 52, 53, 54, 55, 56, 74, 75, 76, 77, 99, 101, 103]
+  hotspot_residues: [33, 54, 76, 101]
+  truncation:
+    enabled: true
+    buffer_angstroms: 12.0
+    preserve_secondary_structure: true
+
+antibody:
+  format: "vhh"
+  framework: "builtin:NbBCII10"
+  cdr_loops:
+    H1: "7"
+    H2: "6"
+    H3: "7-15"
+
+pipeline:
+  rfdiffusion:
+    num_designs: 20
+    seed: 42
+  proteinmpnn:
+    sequences_per_backbone: 2
+    temperature: 0.2
+  rf2:
+    recycling_iterations: 10
+
+filtering:
+  pae_threshold: 10.0
+  rmsd_threshold: 2.0
+  ddg_threshold: -20.0
+
+compute:
+  gpus: 1
+  memory_gb: 40
+
+output:
+  directory: "./results/cancer_drivers/b7h3_vhh_smoke"
+  top_n_candidates: 5
+  report_format: "both"
+  export_pdbs: true

@@ -66,12 +66,14 @@ class PipelineOrchestrator:
         # Stage 2: ProteinMPNN
         if not self._checkpoint_exists("stage2"):
             logger.info("=== Stage 2: ProteinMPNN ===")
+            mpnn_weights = self.rfantibody_root / "weights" / "ProteinMPNN_v48_noise_0.2.pt"
             run_proteinmpnn(
                 backbones_qv,
                 sequences_qv,
                 self.rfantibody_root,
                 sequences_per_backbone=self.config.pipeline.proteinmpnn.sequences_per_backbone,
                 temperature=self.config.pipeline.proteinmpnn.temperature,
+                weights_path=mpnn_weights if mpnn_weights.exists() else None,
             )
             self._save_checkpoint("stage2")
         else:
@@ -80,11 +82,13 @@ class PipelineOrchestrator:
         # Stage 3: RF2
         if not self._checkpoint_exists("stage3"):
             logger.info("=== Stage 3: RF2 ===")
+            rf2_weights = self.rfantibody_root / "weights" / "RF2_ab.pt"
             run_rf2(
                 sequences_qv,
                 predictions_qv,
                 self.rfantibody_root,
                 recycling_iterations=self.config.pipeline.rf2.recycling_iterations,
+                weights_path=rf2_weights if rf2_weights.exists() else None,
             )
             self._save_checkpoint("stage3")
         else:

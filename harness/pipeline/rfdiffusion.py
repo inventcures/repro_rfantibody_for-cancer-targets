@@ -44,6 +44,7 @@ def run_rfdiffusion(
         f"antibody.design_loops=[{inputs.cdr_loop_string}]",
         f"inference.num_designs={inputs.num_designs}",
         f"inference.quiver={output_qv}",
+        "diffuser.T=50",
     ]
 
     if inputs.weights_path:

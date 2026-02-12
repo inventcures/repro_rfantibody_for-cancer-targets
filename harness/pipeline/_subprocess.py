@@ -30,7 +30,7 @@ def run_pipeline_command(
     Raises:
         RuntimeError: If the subprocess exits with a non-zero return code.
     """
-    run_env = {**os.environ, **(env or {})}
+    run_env = {**os.environ, "HYDRA_FULL_ERROR": "1", **(env or {})}
 
     logger.debug("%s command: %s", label, " ".join(cmd))
 

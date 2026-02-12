@@ -16,18 +16,20 @@ def run_proteinmpnn(
     rfantibody_root: Path,
     sequences_per_backbone: int = 5,
     temperature: float = 0.2,
+    weights_path: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> Path:
     """Run ProteinMPNN to design CDR sequences for each backbone."""
-    script = rfantibody_root / "scripts" / "proteinmpnn_interface_design.py"
-
     cmd = [
-        "python", str(script),
-        "-inquiver", str(input_qv),
-        "-outquiver", str(output_qv),
-        "--num_seq_per_target", str(sequences_per_backbone),
-        "--sampling_temp", str(temperature),
+        "proteinmpnn",
+        "--input-quiver", str(input_qv),
+        "--output-quiver", str(output_qv),
+        "--seqs-per-struct", str(sequences_per_backbone),
+        "--temperature", str(temperature),
     ]
+
+    if weights_path and weights_path.exists():
+        cmd.extend(["--weights", str(weights_path)])
 
     logger.info(
         "Stage 2 (ProteinMPNN): %d seqs/backbone, temp=%.2f",

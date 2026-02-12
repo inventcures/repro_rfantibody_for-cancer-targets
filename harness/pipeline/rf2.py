@@ -15,17 +15,19 @@ def run_rf2(
     output_qv: Path,
     rfantibody_root: Path,
     recycling_iterations: int = 10,
+    weights_path: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> Path:
     """Run RF2 to predict structures and score designed sequences."""
-    script = rfantibody_root / "scripts" / "rf2_predict.py"
-
     cmd = [
-        "python", str(script),
-        f"input.quiver={input_qv}",
-        f"output.quiver={output_qv}",
-        f"predict.n_recycles={recycling_iterations}",
+        "rf2",
+        "--input-quiver", str(input_qv),
+        "--output-quiver", str(output_qv),
+        "--num-recycles", str(recycling_iterations),
     ]
+
+    if weights_path and weights_path.exists():
+        cmd.extend(["--weights", str(weights_path)])
 
     logger.info("Stage 3 (RF2): recycling=%d", recycling_iterations)
 
