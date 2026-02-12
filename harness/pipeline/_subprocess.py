@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-from pathlib import Path
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,9 @@ def run_pipeline_command(
     timeout: int | None = None,
 ) -> subprocess.CompletedProcess:
     """Run a subprocess command with merged environment and error handling.
+
+    Streams stdout/stderr to the logger in real-time so per-design metrics
+    and stage progress are visible in the log output.
 
     Args:
         cmd: Command and arguments.
@@ -32,13 +35,37 @@ def run_pipeline_command(
     """
     run_env = {**os.environ, "HYDRA_FULL_ERROR": "1", **(env or {})}
 
-    logger.debug("%s command: %s", label, " ".join(cmd))
+    logger.info("%s command: %s", label, " ".join(cmd))
 
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, env=run_env, timeout=timeout,
+    t0 = time.monotonic()
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=run_env,
+        bufsize=1,
     )
-    if result.returncode != 0:
+
+    stdout_lines: list[str] = []
+    try:
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            stdout_lines.append(line)
+            logger.info("[%s] %s", label, line)
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
+
+    elapsed = time.monotonic() - t0
+    logger.info("%s finished in %.1fs (exit %d)", label, elapsed, proc.returncode)
+
+    stdout_text = "\n".join(stdout_lines)
+
+    if proc.returncode != 0:
         raise RuntimeError(
-            f"{label} failed (exit {result.returncode}):\n{result.stderr}"
+            f"{label} failed (exit {proc.returncode}):\n{stdout_text[-5000:]}"
         )
-    return result
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout_text, "")

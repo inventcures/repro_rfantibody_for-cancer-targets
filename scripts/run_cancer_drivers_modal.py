@@ -72,7 +72,9 @@ def _discover_configs(
         log.error("Config directory not found: %s", config_path)
         return []
 
-    configs = sorted(config_path.glob("*.yaml"))
+    configs = sorted(
+        c for c in config_path.glob("*.yaml") if not c.name.startswith("_")
+    )
     if not configs:
         log.error("No YAML configs in %s", config_path)
         return []
@@ -301,7 +303,13 @@ def test_rfantibody_example(use_9lme: bool = False) -> dict:
     timeout=86400,
 )
 def run_campaign(config_yaml: str, campaign_name: str) -> dict:
-    """Run a single campaign inside a Modal GPU container."""
+    """Run a single campaign inside a Modal GPU container.
+
+    Streams full subprocess output to a log file on the Volume and parses
+    per-stage timing for post-hoc analysis.
+    """
+    import os
+    import re
     import subprocess
     import tempfile
     import traceback
@@ -309,13 +317,14 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
     import yaml
 
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format=f"%(asctime)s [{campaign_name}] %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     clog = logging.getLogger(campaign_name)
 
     start = time.monotonic()
+    stage_times: dict[str, dict] = {}
 
     try:
         config = yaml.safe_load(config_yaml)
@@ -323,14 +332,20 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
         patched_output = original_output.replace("./results", RESULTS_MOUNT, 1)
         config["output"]["directory"] = patched_output
 
+        log_dir = Path(patched_output) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{campaign_name}.log"
+
         clog.info("Output: %s", patched_output)
+        clog.info("Log file: %s", log_path)
         clog.info("PDB: %s | Chain: %s | Epitope: %d residues | Hotspots: %s",
                    config.get("target", {}).get("pdb_id"),
                    config.get("target", {}).get("chain_id"),
                    len(config.get("target", {}).get("epitope_residues", [])),
                    config.get("target", {}).get("hotspot_residues"))
-        clog.info("Designs: %d | Format: %s",
+        clog.info("Designs: %d | Seqs/backbone: %d | Format: %s",
                    config.get("pipeline", {}).get("rfdiffusion", {}).get("num_designs", 0),
+                   config.get("pipeline", {}).get("proteinmpnn", {}).get("sequences_per_backbone", 5),
                    config.get("antibody", {}).get("format"))
 
         with tempfile.NamedTemporaryFile(
@@ -339,21 +354,72 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
             yaml.dump(config, f)
             config_path = f.name
 
-        cmd = ["rfab", "--rfantibody-root", RFANTIBODY_PATH, "run", config_path]
-        clog.info("Stage 1/3: RFdiffusion (backbone generation)")
-        clog.info("Stage 2/3: ProteinMPNN (sequence design)")
-        clog.info("Stage 3/3: RF2 (structure prediction)")
+        cmd = ["rfab", "--rfantibody-root", RFANTIBODY_PATH, "run", "-v", config_path]
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+
+        clog.info("CMD: %s", " ".join(cmd))
         clog.info("Pipeline started...")
 
-        proc = subprocess.run(cmd, text=True, capture_output=True)
+        stage_pattern = re.compile(r"=== Stage (\d): (\w+)")
+        stage_complete_pattern = re.compile(r"Stage (\d) complete")
+        checkpoint_pattern = re.compile(r"Checkpoint saved: stage(\d)")
+        current_stage_start: float | None = None
+        current_stage_name: str | None = None
+
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env, bufsize=1,
+        )
+
+        with open(log_path, "w") as logf:
+            logf.write(f"# Campaign: {campaign_name}\n")
+            logf.write(f"# Started: {_utcnow()}\n")
+            logf.write(f"# Config: {config_path}\n")
+            logf.write(f"# Command: {' '.join(cmd)}\n\n")
+
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                logf.write(line + "\n")
+                clog.info("  %s", line)
+
+                stage_match = stage_pattern.search(line)
+                if stage_match:
+                    if current_stage_name and current_stage_start is not None:
+                        stage_times[current_stage_name]["elapsed_s"] = (
+                            time.monotonic() - current_stage_start
+                        )
+                    stage_num = stage_match.group(1)
+                    stage_label = stage_match.group(2)
+                    current_stage_name = f"stage{stage_num}_{stage_label}"
+                    current_stage_start = time.monotonic()
+                    stage_times[current_stage_name] = {
+                        "started_at": _utcnow(),
+                    }
+                    clog.info(">>> STAGE %s (%s) STARTED", stage_num, stage_label)
+
+                if checkpoint_pattern.search(line):
+                    if current_stage_name and current_stage_start is not None:
+                        elapsed = time.monotonic() - current_stage_start
+                        stage_times[current_stage_name]["elapsed_s"] = elapsed
+                        stage_times[current_stage_name]["completed_at"] = _utcnow()
+                        clog.info(
+                            ">>> STAGE %s COMPLETED in %.1fs",
+                            current_stage_name, elapsed,
+                        )
+                        current_stage_name = None
+                        current_stage_start = None
+
+            logf.write(f"\n# Finished: {_utcnow()}\n")
+
+        proc.wait()
         elapsed = time.monotonic() - start
 
-        if proc.stdout:
-            for line in proc.stdout.strip().split("\n")[-30:]:
-                clog.info("  %s", line)
-        if proc.returncode != 0 and proc.stderr:
-            for line in proc.stderr.strip().split("\n")[-30:]:
-                clog.error("  %s", line)
+        if current_stage_name and current_stage_start is not None:
+            stage_times[current_stage_name]["elapsed_s"] = (
+                time.monotonic() - current_stage_start
+            )
+
+        design_count = _count_designs_on_volume(patched_output)
 
         result = {
             "campaign": campaign_name,
@@ -361,21 +427,31 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
             "returncode": proc.returncode,
             "elapsed_seconds": elapsed,
             "completed_at": _utcnow(),
-            "stdout_tail": proc.stdout[-3000:] if proc.stdout else "",
-            "stderr_tail": proc.stderr[-3000:] if proc.stderr else "",
+            "stage_times": stage_times,
+            "log_path": str(log_path),
+            "design_count": design_count,
         }
 
     except Exception as exc:
         elapsed = time.monotonic() - start
-        clog.error("Exception: %s", exc)
+        clog.error("Exception: %s\n%s", exc, traceback.format_exc())
         result = {
             "campaign": campaign_name,
             "success": False,
             "returncode": -1,
             "elapsed_seconds": elapsed,
             "completed_at": _utcnow(),
+            "stage_times": stage_times,
             "error": f"{exc}\n{traceback.format_exc()}",
         }
+
+    # Save per-campaign result JSON
+    try:
+        result_json_path = Path(patched_output) / "logs" / f"{campaign_name}_result.json"
+        result_json_path.parent.mkdir(parents=True, exist_ok=True)
+        result_json_path.write_text(json.dumps(result, indent=2, default=str))
+    except Exception as exc:
+        clog.warning("Could not write result JSON: %s", exc)
 
     # Update batch state on Volume
     try:
@@ -385,6 +461,8 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
             "elapsed_seconds": result["elapsed_seconds"],
             "completed_at": result["completed_at"],
             "returncode": result.get("returncode", -1),
+            "stage_times": stage_times,
+            "design_count": result.get("design_count", {}),
         }
         _save_batch_state_remote(state)
         clog.info("Checkpoint saved to Volume")
@@ -396,8 +474,27 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
     status = "OK" if result["success"] else "FAILED"
     hours = elapsed / 3600
     clog.info("DONE: %s — %s (%.1fh)", campaign_name, status, hours)
+    for sname, sinfo in stage_times.items():
+        s_elapsed = sinfo.get("elapsed_s", 0)
+        clog.info("  %s: %.1fs (%.1f min)", sname, s_elapsed, s_elapsed / 60)
 
     return result
+
+
+def _count_designs_on_volume(output_dir: str) -> dict:
+    """Count quiver files and score data in the output directory."""
+    from pathlib import Path
+    counts: dict[str, int | str] = {}
+    try:
+        pipeline_dir = Path(output_dir) / "pipeline"
+        for qv in pipeline_dir.glob("*.qv"):
+            counts[qv.name] = qv.stat().st_size
+        analysis_dir = Path(output_dir) / "analysis"
+        for f in analysis_dir.glob("*"):
+            counts[f"analysis/{f.name}"] = f.stat().st_size
+    except Exception:
+        pass
+    return counts
 
 
 @app.local_entrypoint()
@@ -497,31 +594,44 @@ def main(
     final_state = _load_batch_state_local()
     _print_summary(final_state, wall_elapsed)
 
-    # Write local log
+    # Write detailed local summary
     summary_dir = Path("results/cancer_drivers_summary")
     summary_dir.mkdir(parents=True, exist_ok=True)
-    log_path = summary_dir / "modal_batch_run.json"
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    log_path = summary_dir / f"batch_run_{ts}.json"
     all_results = {
         "wall_seconds": wall_elapsed,
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": _utcnow(),
-        "campaigns_run": [r["campaign"] for r in results],
-        "campaigns_skipped": sorted(prior_completed),
-        "results": results,
+        "total_campaigns": len(configs),
+        "campaigns_run": len(results),
+        "campaigns_skipped": len(prior_completed),
+        "campaigns_succeeded": sum(1 for r in results if r.get("success")),
+        "campaigns_failed": sum(1 for r in results if not r.get("success")),
+        "total_gpu_seconds": sum(r.get("elapsed_seconds", 0) for r in results),
+        "per_campaign": results,
+        "skipped_campaigns": sorted(prior_completed),
     }
     with open(log_path, "w") as f:
-        json.dump(all_results, f, indent=2)
-    log.info("Local log: %s", log_path)
-    log.info("Download: modal volume get rfab-cancer-drivers-results results/")
+        json.dump(all_results, f, indent=2, default=str)
+
+    latest_path = summary_dir / "latest_batch_run.json"
+    with open(latest_path, "w") as f:
+        json.dump(all_results, f, indent=2, default=str)
+
+    log.info("Local summary: %s", log_path)
+    log.info("Download logs: modal volume get rfab-cancer-drivers-results results/")
 
 
 def _print_summary(state: dict, wall_elapsed: float) -> None:
     campaigns = state.get("campaigns", {})
 
-    print("\n" + "=" * 72)
+    print("\n" + "=" * 90)
     print("MODAL BATCH RUN SUMMARY")
-    print("=" * 72)
-    print(f"{'Campaign':<30} {'Status':<12} {'GPU-hours':<12} {'Completed'}")
-    print("-" * 72)
+    print("=" * 90)
+    print(f"{'Campaign':<25} {'Status':<10} {'Total':<8} {'RFdiff':<8} {'MPNN':<8} {'RF2':<8} {'Completed'}")
+    print("-" * 90)
 
     succeeded = 0
     total_gpu_hours = 0.0
@@ -531,17 +641,29 @@ def _print_summary(state: dict, wall_elapsed: float) -> None:
         elapsed_s = info.get("elapsed_seconds", 0)
         gpu_h = elapsed_s / 3600
         total_gpu_hours += gpu_h
+
+        stages = info.get("stage_times", {})
+        rfd_m = stages.get("stage1_RFdiffusion", {}).get("elapsed_s", 0) / 60
+        mpnn_m = stages.get("stage2_ProteinMPNN", {}).get("elapsed_s", 0) / 60
+        rf2_m = stages.get("stage3_RF2", {}).get("elapsed_s", 0) / 60
+
         completed_at = info.get("completed_at", "—")
-        print(f"{name:<30} {status:<12} {gpu_h:<12.1f} {completed_at}")
+        if completed_at != "—" and len(completed_at) > 19:
+            completed_at = completed_at[:19]
+
+        print(
+            f"{name:<25} {status:<10} {gpu_h:<8.1f} "
+            f"{rfd_m:<8.0f} {mpnn_m:<8.0f} {rf2_m:<8.0f} {completed_at}"
+        )
         if status == "COMPLETED":
             succeeded += 1
 
-    print("-" * 72)
+    print("-" * 90)
     wall_h = wall_elapsed / 3600 if wall_elapsed > 0 else 0
     print(f"Total: {succeeded}/{len(campaigns)} campaigns succeeded")
     if wall_elapsed > 0:
         print(f"  GPU-hours: {total_gpu_hours:.1f}h | Wall time: {wall_h:.1f}h")
-    print("=" * 72)
+    print("=" * 90)
 
 
 if __name__ == "__main__":
