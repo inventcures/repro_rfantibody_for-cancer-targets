@@ -31,6 +31,7 @@ class TargetConfig:
     pdb_id: Optional[str] = None
     pdb_file: Optional[str] = None
     chain_id: str = "A"
+    source_chain_id: Optional[str] = None
     epitope_residues: list[int] = field(default_factory=list)
     hotspot_residues: list[int] = field(default_factory=list)
     truncation: TruncationConfig = field(default_factory=TruncationConfig)

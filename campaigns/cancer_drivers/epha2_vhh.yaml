@@ -6,8 +6,8 @@ campaign:
 target:
   pdb_id: "3SKJ"
   chain_id: "E"
-  epitope_residues: [43, 45, 47, 49, 51, 53, 55, 68, 70, 72, 74, 99, 101, 103, 105, 107, 109, 125, 127, 129, 131]
-  hotspot_residues: [47, 72, 103, 127]
+  epitope_residues: [29, 31, 32, 33, 42, 44, 46, 48, 49, 77, 79, 83, 84, 85, 129, 132, 133, 135, 164, 165, 166]
+  hotspot_residues: [84, 49, 132, 85]
   truncation:
     enabled: true
     buffer_angstroms: 10.0

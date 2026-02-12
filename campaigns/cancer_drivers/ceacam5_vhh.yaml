@@ -6,8 +6,8 @@ campaign:
 target:
   pdb_id: "8BW0"
   chain_id: "C"
-  epitope_residues: [606, 607, 609, 610, 612, 613, 622, 624, 626, 628, 630, 632, 635, 636, 637, 639, 641]
-  hotspot_residues: [612, 622, 636, 639]
+  epitope_residues: [511, 590, 621, 622, 623, 624, 625, 635, 636, 637, 639, 640, 641, 659, 660, 661]
+  hotspot_residues: [639, 623, 660, 590]
   truncation:
     enabled: true
     buffer_angstroms: 12.0

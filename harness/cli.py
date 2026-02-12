@@ -154,7 +154,10 @@ def _prepare_inputs(config: CampaignConfig, rfab_root: Path) -> PreparedInputs |
     prep_dir.mkdir(parents=True, exist_ok=True)
 
     if config.target.pdb_id:
-        target_pdb = fetch_pdb(config.target.pdb_id, prep_dir, config.target.chain_id)
+        target_pdb = fetch_pdb(
+            config.target.pdb_id, prep_dir, config.target.chain_id,
+            source_chain_id=config.target.source_chain_id,
+        )
     else:
         target_pdb = Path(config.target.pdb_file)
 

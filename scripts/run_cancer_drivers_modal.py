@@ -302,7 +302,7 @@ def test_rfantibody_example(use_9lme: bool = False) -> dict:
     volumes={RESULTS_MOUNT: results_volume},
     timeout=86400,
 )
-def run_campaign(config_yaml: str, campaign_name: str) -> dict:
+def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> dict:
     """Run a single campaign inside a Modal GPU container.
 
     Streams full subprocess output to a log file on the Volume and parses
@@ -310,6 +310,7 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
     """
     import os
     import re
+    import shutil
     import subprocess
     import tempfile
     import traceback
@@ -333,6 +334,16 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
         original_output = config.get("output", {}).get("directory", "")
         patched_output = original_output.replace("./results", RESULTS_MOUNT, 1)
         config["output"]["directory"] = patched_output
+
+        if clean:
+            pipeline_dir = Path(patched_output) / "pipeline"
+            if pipeline_dir.exists():
+                clog.info("Cleaning stale pipeline data: %s", pipeline_dir)
+                shutil.rmtree(pipeline_dir)
+            prep_dir = Path(patched_output) / "prep"
+            if prep_dir.exists():
+                clog.info("Cleaning stale prep data: %s", prep_dir)
+                shutil.rmtree(prep_dir)
 
         log_dir = Path(patched_output) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -570,7 +581,7 @@ def main(
         len(prior_completed),
     )
 
-    config_args = [(c.read_text(), c.stem) for c in pending_configs]
+    config_args = [(c.read_text(), c.stem, reset) for c in pending_configs]
 
     log.info("Launching %d campaigns on Modal (A100-80GB)...", len(config_args))
     print("=" * 72)

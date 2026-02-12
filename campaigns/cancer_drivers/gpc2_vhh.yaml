@@ -5,9 +5,9 @@ campaign:
 
 target:
   pdb_id: "6WJL"
-  chain_id: "A"
-  epitope_residues: [44, 46, 48, 49, 50, 51, 53, 55, 268, 270, 272, 274, 276, 278, 284, 286, 288, 290, 292, 294]
-  hotspot_residues: [48, 55, 274, 290]
+  chain_id: "E"
+  epitope_residues: [91, 92, 95, 98, 99, 101, 102, 103, 105, 106, 109, 380, 381, 382, 392, 393, 396, 397, 400, 407, 411, 415, 416]
+  hotspot_residues: [102, 382, 95, 392]
   truncation:
     enabled: true
     buffer_angstroms: 12.0

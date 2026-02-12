@@ -5,9 +5,9 @@ campaign:
 
 target:
   pdb_id: "4F3F"
-  chain_id: "A"
-  epitope_residues: [296, 298, 299, 300, 302, 304, 306, 310, 312, 314, 316, 318, 320, 338, 340, 342, 344, 346, 348]
-  hotspot_residues: [299, 310, 318, 342]
+  chain_id: "C"
+  epitope_residues: [11, 18, 19, 21, 22, 24, 25, 26, 27, 45, 46, 47, 48, 49, 50, 51, 52]
+  hotspot_residues: [26, 49, 22, 48]
   truncation:
     enabled: true
     buffer_angstroms: 10.0
