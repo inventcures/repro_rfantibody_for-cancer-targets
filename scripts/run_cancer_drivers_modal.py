@@ -8,9 +8,9 @@ gets a dedicated A100-80GB container running the full RFAntibody
 Features:
 - Idempotent: re-running resumes from last checkpoint (skips completed campaigns)
 - Detailed logging with timestamps (local + per-container)
-- Progress bar via tqdm
 - Batch state persisted to Modal Volume for crash recovery
 - Pipeline-level checkpointing (RFAntibody orchestrator saves per-stage checkpoints)
+- Server-side orchestration: survives terminal closure via `modal deploy` + trigger
 
 Setup:
     pip install modal tqdm pyyaml
@@ -21,18 +21,21 @@ Setup:
     # GitHub token for private RFAntibody repo (one-time):
     modal secret create github-token GITHUB_TOKEN=ghp_YOUR_TOKEN_HERE
 
-Usage:
-    # Local dry-run (no Modal infra needed):
+Usage (RECOMMENDED - survives terminal closure):
+    # Step 1: Deploy app (one-time, or after code changes):
+    modal deploy scripts/run_cancer_drivers_modal.py
+
+    # Step 2: Trigger campaigns (fire-and-forget, exits immediately):
+    python scripts/run_cancer_drivers_modal.py --trigger [--reset] [--campaigns ...]
+
+    # Step 3: Monitor progress:
+    python scripts/run_cancer_drivers_modal.py --status
+
+Usage (legacy - requires terminal to stay open):
+    modal run scripts/run_cancer_drivers_modal.py [--reset] [--campaigns ...]
+
+Other:
     python scripts/run_cancer_drivers_modal.py --dry-run
-
-    # Full run on Modal GPUs:
-    modal run scripts/run_cancer_drivers_modal.py
-
-    # Run subset:
-    modal run scripts/run_cancer_drivers_modal.py --campaigns b7h3_vhh,egfrviii_vhh
-
-    # Force re-run (clear checkpoints):
-    modal run scripts/run_cancer_drivers_modal.py --reset
 """
 
 from __future__ import annotations
@@ -374,10 +377,16 @@ def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> d
         clog.info("Pipeline started...")
 
         stage_pattern = re.compile(r"=== Stage (\d): (\w+)")
-        stage_complete_pattern = re.compile(r"Stage (\d) complete")
         checkpoint_pattern = re.compile(r"Checkpoint saved: stage(\d)")
+        batch_checkpoint_pattern = re.compile(r"Batch checkpoint saved: (\w+)_batch_(\d+)\s+\((\d+)/(\d+)")
+        design_pattern = re.compile(r"(?:design|backbone|sequence|struct)\D*(\d+)\s*/\s*(\d+)", re.IGNORECASE)
         current_stage_start: float | None = None
         current_stage_name: str | None = None
+
+        PERIODIC_COMMIT_INTERVAL = 600  # 10 minutes
+        last_commit_time = time.monotonic()
+        designs_processed = 0
+        designs_total = 0
 
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -405,20 +414,128 @@ def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> d
                     stage_label = stage_match.group(2)
                     current_stage_name = f"stage{stage_num}_{stage_label}"
                     current_stage_start = time.monotonic()
+                    designs_processed = 0
+                    designs_total = 0
                     stage_times[current_stage_name] = {
                         "started_at": _utcnow(),
                     }
                     clog.info(">>> STAGE %s (%s) STARTED", stage_num, stage_label)
+
+                design_match = design_pattern.search(line)
+                if design_match:
+                    designs_processed = int(design_match.group(1))
+                    designs_total = int(design_match.group(2))
+
+                # Periodic Volume commit every 10 min during long stages.
+                # Preserves partial quiver data + log written so far.
+                now = time.monotonic()
+                if current_stage_name and (now - last_commit_time) > PERIODIC_COMMIT_INTERVAL:
+                    logf.flush()
+                    progress_pct = (
+                        f"{designs_processed}/{designs_total} "
+                        f"({100*designs_processed/designs_total:.0f}%)"
+                        if designs_total > 0 else "?"
+                    )
+                    try:
+                        state = _load_batch_state_remote()
+                        state["campaigns"][campaign_name] = {
+                            "status": "running",
+                            "current_stage": current_stage_name,
+                            "stages_completed": [
+                                k for k, v in stage_times.items()
+                                if "completed_at" in v
+                            ],
+                            "designs_processed": designs_processed,
+                            "designs_total": designs_total,
+                            "elapsed_seconds": now - start,
+                            "stage_times": stage_times,
+                            "updated_at": _utcnow(),
+                        }
+                        _save_batch_state_remote(state)
+                    except Exception as exc:
+                        clog.warning("Periodic state save failed: %s", exc)
+                    try:
+                        results_volume.commit()
+                        last_commit_time = now
+                        clog.info(
+                            ">>> Periodic Volume commit: %s progress=%s "
+                            "(%.0f min elapsed)",
+                            current_stage_name, progress_pct,
+                            (now - (current_stage_start or start)) / 60,
+                        )
+                    except Exception as exc:
+                        clog.warning("Periodic Volume commit failed: %s", exc)
+
+                batch_match = batch_checkpoint_pattern.search(line)
+                if batch_match:
+                    b_stage = batch_match.group(1)
+                    b_idx = int(batch_match.group(2))
+                    b_done = int(batch_match.group(3))
+                    b_total = int(batch_match.group(4))
+                    logf.flush()
+                    try:
+                        state = _load_batch_state_remote()
+                        state["campaigns"][campaign_name] = {
+                            "status": "running",
+                            "current_stage": current_stage_name or b_stage,
+                            "batch_progress": f"{b_done}/{b_total}",
+                            "stages_completed": [
+                                k for k, v in stage_times.items()
+                                if "completed_at" in v
+                            ],
+                            "elapsed_seconds": time.monotonic() - start,
+                            "stage_times": stage_times,
+                            "updated_at": _utcnow(),
+                        }
+                        _save_batch_state_remote(state)
+                    except Exception as exc:
+                        clog.warning("Batch state save failed: %s", exc)
+                    try:
+                        results_volume.commit()
+                        last_commit_time = time.monotonic()
+                        clog.info(
+                            ">>> Volume committed after batch %d/%d of %s",
+                            b_done, b_total, b_stage,
+                        )
+                    except Exception as exc:
+                        clog.warning("Batch Volume commit failed: %s", exc)
 
                 if checkpoint_pattern.search(line):
                     if current_stage_name and current_stage_start is not None:
                         elapsed = time.monotonic() - current_stage_start
                         stage_times[current_stage_name]["elapsed_s"] = elapsed
                         stage_times[current_stage_name]["completed_at"] = _utcnow()
+                        stage_times[current_stage_name]["designs"] = designs_processed or designs_total
                         clog.info(
                             ">>> STAGE %s COMPLETED in %.1fs",
                             current_stage_name, elapsed,
                         )
+
+                        logf.flush()
+                        try:
+                            state = _load_batch_state_remote()
+                            state["campaigns"][campaign_name] = {
+                                "status": "running",
+                                "current_stage": current_stage_name,
+                                "stages_completed": list(stage_times.keys()),
+                                "elapsed_seconds": time.monotonic() - start,
+                                "stage_times": stage_times,
+                                "updated_at": _utcnow(),
+                            }
+                            _save_batch_state_remote(state)
+                        except Exception as exc:
+                            clog.warning("Stage-end state save failed: %s", exc)
+                        try:
+                            results_volume.commit()
+                            last_commit_time = time.monotonic()
+                            clog.info(
+                                ">>> Volume committed after %s "
+                                "(quiver + checkpoint durable)",
+                                current_stage_name,
+                            )
+                        except Exception as exc:
+                            clog.warning("Volume commit failed: %s", exc)
+
                         current_stage_name = None
                         current_stage_start = None
 
@@ -492,6 +609,125 @@ def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> d
         clog.info("  %s: %.1fs (%.1f min)", sname, s_elapsed, s_elapsed / 60)
 
     return result
+
+
+orchestrator_image = modal.Image.debian_slim(python_version="3.11").pip_install(
+    "pyyaml>=6.0",
+)
+
+
+@app.function(
+    image=orchestrator_image,
+    volumes={RESULTS_MOUNT: results_volume},
+    timeout=86400,
+)
+def orchestrate_batch(configs_json: str, reset: bool = False) -> dict:
+    """Server-side orchestrator. Runs on Modal CPU, dispatches GPU campaigns.
+
+    This function runs inside Modal's infrastructure, so it survives
+    terminal/session closure. It dispatches all GPU campaign functions
+    via .starmap() and collects results.
+    """
+    import json as _json
+    import yaml
+
+    _setup_logging()
+    clog = logging.getLogger("orchestrator")
+    clog.info("Orchestrator started on Modal (server-side)")
+
+    configs = _json.loads(configs_json)
+    clog.info("Received %d campaign configs", len(configs))
+
+    if reset:
+        clog.info("Reset requested: clearing prior batch state")
+        state_path = Path(BATCH_STATE_FILE)
+        try:
+            if state_path.exists():
+                state_path.unlink()
+            results_volume.commit()
+        except Exception:
+            pass
+        prior_completed: set[str] = set()
+    else:
+        prior_state = _load_batch_state_remote()
+        prior_completed = {
+            name
+            for name, info in prior_state.get("campaigns", {}).items()
+            if info.get("status") == "completed"
+        }
+        if prior_completed:
+            clog.info(
+                "Resuming: %d/%d already completed: %s",
+                len(prior_completed),
+                len(configs),
+                ", ".join(sorted(prior_completed)),
+            )
+
+    prior_running = set()
+    if not reset:
+        prior_running = {
+            name
+            for name, info in prior_state.get("campaigns", {}).items()
+            if info.get("status") == "running"
+        }
+        if prior_running:
+            clog.info(
+                "Resuming %d partially-completed campaigns (stage checkpoints preserved): %s",
+                len(prior_running),
+                ", ".join(sorted(prior_running)),
+            )
+
+    pending = [c for c in configs if c["name"] not in prior_completed]
+    if not pending:
+        clog.info("All campaigns already completed.")
+        return {"status": "all_complete", "total": len(configs), "skipped": len(configs)}
+
+    clog.info("Dispatching %d campaigns to GPU workers...", len(pending))
+    config_args = [
+        (c["yaml"], c["name"], reset and c["name"] not in prior_running)
+        for c in pending
+    ]
+
+    wall_start = time.monotonic()
+    results = []
+    for result in run_campaign.starmap(config_args):
+        results.append(result)
+        status = "OK" if result["success"] else "FAIL"
+        elapsed_h = result["elapsed_seconds"] / 3600
+        clog.info(
+            "Campaign %s: %s (%.1fh)", result["campaign"], status, elapsed_h
+        )
+
+    wall_elapsed = time.monotonic() - wall_start
+    succeeded = sum(1 for r in results if r.get("success"))
+    failed = sum(1 for r in results if not r.get("success"))
+
+    summary = {
+        "status": "completed",
+        "wall_seconds": wall_elapsed,
+        "total_campaigns": len(configs),
+        "campaigns_run": len(results),
+        "campaigns_skipped": len(prior_completed),
+        "campaigns_succeeded": succeeded,
+        "campaigns_failed": failed,
+        "total_gpu_seconds": sum(r.get("elapsed_seconds", 0) for r in results),
+        "completed_at": _utcnow(),
+        "per_campaign": results,
+    }
+
+    try:
+        summary_path = Path(RESULTS_MOUNT) / "batch_summary.json"
+        summary_path.write_text(_json.dumps(summary, indent=2, default=str))
+        results_volume.commit()
+        clog.info("Batch summary written to Volume: %s", summary_path)
+    except Exception as exc:
+        clog.warning("Could not write batch summary: %s", exc)
+
+    clog.info(
+        "BATCH COMPLETE: %d/%d succeeded, %d failed, wall=%.1fh",
+        succeeded, len(results), failed, wall_elapsed / 3600,
+    )
+    return summary
 
 
 def _count_designs_on_volume(output_dir: str) -> dict:
@@ -660,9 +896,15 @@ def _print_summary(state: dict, wall_elapsed: float) -> None:
         mpnn_m = stages.get("stage2_ProteinMPNN", {}).get("elapsed_s", 0) / 60
         rf2_m = stages.get("stage3_RF2", {}).get("elapsed_s", 0) / 60
 
-        completed_at = info.get("completed_at", "—")
+        completed_at = info.get("completed_at", info.get("updated_at", "—"))
         if completed_at != "—" and len(completed_at) > 19:
             completed_at = completed_at[:19]
+
+        current_stage = ""
+        if status == "RUNNING":
+            current_stage = info.get("current_stage", "")
+            stages_done = info.get("stages_completed", [])
+            completed_at = f"{len(stages_done)}/3 stages"
 
         print(
             f"{name:<25} {status:<10} {gpu_h:<8.1f} "
@@ -679,17 +921,105 @@ def _print_summary(state: dict, wall_elapsed: float) -> None:
     print("=" * 90)
 
 
+def _parse_args() -> dict:
+    args = {
+        "config_dir": "campaigns/cancer_drivers",
+        "campaigns": "",
+        "dry_run": "--dry-run" in sys.argv,
+        "reset": "--reset" in sys.argv,
+        "trigger": "--trigger" in sys.argv,
+        "status": "--status" in sys.argv,
+    }
+    for i, arg in enumerate(sys.argv):
+        if arg == "--config-dir" and i + 1 < len(sys.argv):
+            args["config_dir"] = sys.argv[i + 1]
+        if arg == "--campaigns" and i + 1 < len(sys.argv):
+            args["campaigns"] = sys.argv[i + 1]
+    return args
+
+
+def _check_status() -> None:
+    _setup_logging()
+    log.info("Checking batch state on Modal Volume...")
+    state = _load_batch_state_local()
+    campaigns = state.get("campaigns", {})
+    if not campaigns:
+        log.info("No batch state found. No campaigns have reported results yet.")
+        return
+    _print_summary(state, 0.0)
+    total = len(campaigns)
+    completed = sum(1 for v in campaigns.values() if v.get("status") == "completed")
+    failed = sum(1 for v in campaigns.values() if v.get("status") == "failed")
+    running = sum(1 for v in campaigns.values() if v.get("status") == "running")
+    for name, info in sorted(campaigns.items()):
+        if info.get("status") == "running":
+            stages = info.get("stages_completed", [])
+            cur = info.get("current_stage", "?")
+            dp = info.get("designs_processed", 0)
+            dt = info.get("designs_total", 0)
+            progress = f"{dp}/{dt}" if dt > 0 else "starting"
+            log.info(
+                "  [RUNNING] %-25s active: %-20s progress: %-12s stages done: %s",
+                name, cur, progress,
+                ", ".join(stages) if stages else "none",
+            )
+    if running > 0:
+        log.info("%d campaigns still running. Re-check with --status", running)
+    elif completed < 10:
+        log.info("Waiting for remaining campaigns. Re-check with --status")
+
+
+def _trigger_batch(config_dir: str, campaigns_filter: str, reset: bool) -> None:
+    _setup_logging()
+    configs = _discover_configs(config_dir, campaigns_filter)
+    if not configs:
+        return
+
+    log.info("Discovered %d campaign configs:", len(configs))
+    for c in configs:
+        log.info("  - %s", c.stem)
+
+    configs_data = [{"yaml": c.read_text(), "name": c.stem} for c in configs]
+    configs_json = json.dumps(configs_data)
+
+    log.info("Triggering server-side orchestrator on deployed Modal app...")
+    f = modal.Function.from_name(
+        "rfantibody-harness-cancer-targets", "orchestrate_batch"
+    )
+    call = f.spawn(configs_json, reset)
+    log.info("Orchestrator spawned: %s", call.object_id)
+    log.info("Campaigns will run entirely on Modal (survives terminal closure).")
+    log.info("")
+    log.info("Monitor progress:")
+    log.info("  python scripts/run_cancer_drivers_modal.py --status")
+    log.info("")
+    log.info("Or view in Modal dashboard:")
+    log.info("  https://modal.com/apps/tp53/rfantibody-harness-cancer-targets")
+
+
 if __name__ == "__main__":
-    if "--dry-run" in sys.argv:
-        config_dir = "campaigns/cancer_drivers"
-        campaigns_filter = ""
-        for i, arg in enumerate(sys.argv):
-            if arg == "--config-dir" and i + 1 < len(sys.argv):
-                config_dir = sys.argv[i + 1]
-            if arg == "--campaigns" and i + 1 < len(sys.argv):
-                campaigns_filter = sys.argv[i + 1]
-        _local_dry_run(config_dir, campaigns_filter)
+    args = _parse_args()
+
+    if args["dry_run"]:
+        _local_dry_run(args["config_dir"], args["campaigns"])
+    elif args["status"]:
+        _check_status()
+    elif args["trigger"]:
+        _trigger_batch(args["config_dir"], args["campaigns"], args["reset"])
     else:
-        print("Use: modal run scripts/run_cancer_drivers_modal.py")
-        print("  or: python scripts/run_cancer_drivers_modal.py --dry-run")
+        print("Usage:")
+        print("  # Validate configs locally:")
+        print("  python scripts/run_cancer_drivers_modal.py --dry-run")
+        print("")
+        print("  # Deploy app (one-time or after code changes):")
+        print("  modal deploy scripts/run_cancer_drivers_modal.py")
+        print("")
+        print("  # Trigger campaigns (fire-and-forget):")
+        print("  python scripts/run_cancer_drivers_modal.py --trigger [--reset] [--campaigns ...]")
+        print("")
+        print("  # Check progress:")
+        print("  python scripts/run_cancer_drivers_modal.py --status")
+        print("")
+        print("  # Legacy (requires terminal to stay open):")
+        print("  modal run scripts/run_cancer_drivers_modal.py [--reset]")
         sys.exit(1)
