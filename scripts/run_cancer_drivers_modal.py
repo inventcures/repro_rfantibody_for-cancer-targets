@@ -317,10 +317,12 @@ def run_campaign(config_yaml: str, campaign_name: str) -> dict:
     import yaml
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.WARNING,
         format=f"%(asctime)s [{campaign_name}] %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.getLogger("harness").setLevel(logging.DEBUG)
+    logging.getLogger(campaign_name).setLevel(logging.DEBUG)
     clog = logging.getLogger(campaign_name)
 
     start = time.monotonic()
