@@ -23,7 +23,7 @@ antibody:
 
 pipeline:
   rfdiffusion:
-    num_designs: 500
+    num_designs: 100
     seed: 42
   proteinmpnn:
     sequences_per_backbone: 5
