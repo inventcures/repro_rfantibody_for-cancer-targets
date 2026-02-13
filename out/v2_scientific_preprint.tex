@@ -68,8 +68,8 @@
 
 The past two years have witnessed a paradigm shift in antibody discovery.
 Where traditional approaches required immunization campaigns lasting months followed by extensive screening of $10^{6}$--$10^{9}$ clones, de novo computational platforms can now generate antibody candidates \textit{in silico} in hours.
-Watson et al.\ demonstrated that RFAntibody, a three-stage pipeline combining RFdiffusion for backbone generation, ProteinMPNN for sequence design, and RoseTTAFold2 for structure prediction, achieves experimental binding rates of 15--17\% with affinities reaching the picomolar range \cite{watson2025}.
-Concurrently, proprietary platforms including Absci's JAM-2, Chai Discovery's Chai-2, and Iambic Therapeutics' Origin-1 have reported similar or superior hit rates \cite{shanehsazzadeh2025,chaidiscovery2025}.
+Bennett, Watson et al.\ demonstrated that RFAntibody, a three-stage pipeline combining RFdiffusion for backbone generation, ProteinMPNN for sequence design, and RoseTTAFold2 for structure prediction, can generate binders with affinities reaching the picomolar range, though per-target experimental success rates ranged from 0--2\% \cite{watson2025}.
+Concurrently, proprietary platforms including Absci's generative antibody design platform and Chai Discovery's Chai-2 have reported de novo antibody design capabilities \cite{shanehsazzadeh2025,chaidiscovery2025}.
 
 Despite these advances, the application of de novo design to the cancers with the greatest unmet need has been remarkably limited.
 The original RFAntibody demonstration targeted influenza hemagglutinin, \textit{Clostridioides difficile} toxin B, respiratory syncytial virus, a PHOX2B neoantigen, and the SARS-CoV-2 receptor binding domain---none of which represent the cancers responsible for the most intractable mortality burden.
@@ -235,10 +235,10 @@ Integrating cross-indication impact, structural readiness, and therapeutic poten
 \textbf{\#} & \textbf{Target} & \textbf{Indication(s)} & \textbf{PDB} & \textbf{Res.} & \textbf{BB} & \textbf{Seqs} & \textbf{Pass} & \textbf{Rate} \\
 \midrule
 1 & B7-H3 & GBM, MPNST, DIPG, NB & 9LME & 2.4\,\AA & 82 & 410 & 11 & 2.7\% \\
-2 & CD47 & GBM & 5IWL & 2.0\,\AA & 96 & 480 & 19 & 4.0\% \\
+2 & CD47 & GBM & 5IWL & 2.8\,\AA & 96 & 480 & 19 & 4.0\% \\
 3 & CEACAM5 & PDAC & 8BW0 & 3.1\,\AA & 82 & 410 & 81 & 19.8\% \\
 4 & EGFR & GBM, MPNST, PDAC & 1YY9 & 2.6\,\AA & 64 & 320 & 5 & 1.6\% \\
-5 & EGFRvIII & GBM & 8UKV & 1.8\,\AA & 73 & 365 & 1 & 0.3\% \\
+5 & EGFRvIII & GBM & 8UKV & 2.9\,\AA & 73 & 365 & 1 & 0.3\% \\
 6 & EphA2 & GBM & 3SKJ & 2.5\,\AA & 70 & 350 & 3 & 0.9\% \\
 7 & GPC2 & Neuroblastoma & 6WJL & 3.3\,\AA & 53 & 265 & 2 & 0.8\% \\
 8 & HER2 Dom.~IV & GBM, MPNST & 1N8Z & 2.5\,\AA & 72 & 360 & 1 & 0.3\% \\
@@ -267,7 +267,7 @@ The complete Stage~2+3 execution consumed approximately 12.5 GPU-hours.
 \end{figure}
 
 Of the 4,085 designs scored by RF2, 135 (3.3\%) passed both quality filters (pAE $<$ 10 and CDR RMSD $<$ 2.0\,\AA; Figure~\ref{fig:funnel}).
-This global pass rate is substantially lower than the 15--17\% experimental hit rate reported for RFAntibody's benchmark targets \cite{watson2025}, reflecting both the stringency of our computational filters and the intrinsic difficulty of the cancer targets selected for this study.
+For reference, the original RFAntibody study reported per-target experimental binding rates of 0--2\% across benchmark targets \cite{watson2025}; our 3.3\% computational pass rate using purely \textit{in silico} metrics is not directly comparable to experimental binding assays, but the same order of magnitude suggests the filtering thresholds are appropriately stringent.
 
 \subsection{Per-Target Pass Rates}
 
@@ -359,7 +359,7 @@ CEACAM5 was the clear standout campaign, producing more passing designs than all
 The best candidate (design 76\_dldesign\_2) achieved pAE = 2.59, CDR RMSD = 0.68\,\AA, interaction pAE = 3.56, and framework-aligned H3 RMSD = 0.70\,\AA.
 Twelve designs achieved CDR RMSD below 1.0\,\AA, and 81 designs passed both thresholds.
 The high success rate may reflect the accessibility of the CEACAM5 A3B3 domain epitope defined in the tusamitamab complex (PDB: 8BW0) and the extended CDR H3 range (10--18 residues) allowed for this campaign.
-CEACAM5 is the target of the ADC tusamitamab ravtansine, which achieved a 20\% objective response rate in PDAC (ASCO 2025), validating this epitope as therapeutically productive \cite{ceacam5structure2024}.
+CEACAM5 is the target of the ADC tusamitamab ravtansine (SAR408701), which reached Phase~II clinical evaluation in solid tumors including non-small cell lung cancer \cite{ceacam5structure2024}, validating this epitope as therapeutically relevant.
 
 \subsubsection{CD47 (GBM) --- 19 passing designs, 4.0\% pass rate}
 
@@ -413,7 +413,7 @@ Despite the difficulty, the 2 passing designs represent the first computationall
 
 Only a single design passed for the tumor-specific EGFRvIII deletion variant.
 This sole candidate (design 19\_dldesign\_0) exhibited borderline pAE (8.24) and CDR RMSD (1.82\,\AA), with the highest interaction pAE (15.14) of any passing design across all campaigns.
-Paradoxically, EGFRvIII has the highest-resolution template in this study (PDB: 8UKV at 1.8\,\AA).
+The EGFRvIII template (PDB: 8UKV at 2.9\,\AA) is of moderate resolution, ruling out template quality as the primary explanation for design difficulty.
 The difficulty may arise from the unique structural features of the EGFRvIII deletion junction, which creates a neoepitope formed by the fusion of residues flanking the exon 2--7 deletion---a geometrically novel surface that the diffusion model may have limited training data to model.
 
 \subsubsection{HER2 Domain IV (GBM, MPNST) --- 1 passing design, 0.3\% pass rate}
@@ -495,7 +495,7 @@ This pattern suggests that backbone topology is the primary determinant of desig
 The most striking finding of this study is the 60-fold range in pass rates across the 10 cancer targets (0.3\% to 19.8\%).
 This variation substantially exceeds what would be expected from sampling noise alone and reflects genuine differences in the tractability of different epitope--antigen pairs for VHH nanobody design.
 CEACAM5's outlier success (19.8\%) may be attributable to the geometry of the tusamitamab epitope on the A3B3 domain, which presents a relatively concave surface patch well-suited to single-domain antibody engagement, combined with the extended H3 loop lengths (10--18 residues) allowed for this campaign.
-In contrast, the near-complete failure of EGFRvIII design (0.3\%) despite having the highest-resolution template (1.8\,\AA) highlights that template quality alone does not predict design success.
+In contrast, the near-complete failure of EGFRvIII design (0.3\%) highlights the intrinsic difficulty of neoepitopes formed by deletion junctions, where the diffusion model has limited structural precedent to draw upon.
 
 \subsection{CDR RMSD as the Dominant Design Bottleneck}
 
@@ -531,6 +531,18 @@ The identification of cross-indication driver targets creates efficiency in the 
 A single high-affinity VHH nanobody against B7-H3 could serve as a therapeutic or diagnostic agent across MPNST, DIPG, neuroblastoma, and GBM---four indications that collectively affect approximately 15,000 patients annually.
 The 11 B7-H3 candidates from this study represent a starting point for this multi-indication strategy.
 Similarly, the 12 combined mesothelin candidates targeting two non-overlapping epitopes enable bispecific VHH construction for enhanced PDAC therapy.
+
+\subsection{Model Bias Versus Intrinsic Target Difficulty}
+
+A natural question arising from the 60-fold variation in pass rates is whether the observed differences reflect genuine biophysical design difficulty or systematic model bias in the RFdiffusion--ProteinMPNN--RF2 pipeline.
+Several lines of evidence favor the design-difficulty interpretation over model bias.
+First, the pipeline's global fold quality metric (pLDDT) was remarkably uniform across all 10 targets (medians 0.88--0.91), indicating that the model treats the VHH framework consistently regardless of target identity.
+Second, the variation is not explained by template resolution: CEACAM5 (19.8\% pass rate) used a 3.1\,\AA\ template while EGFRvIII (0.3\%) used a 2.9\,\AA\ template---the lower-resolution structure outperformed.
+Third, the targets that performed best (CEACAM5, CD47, B7-H3) share a common structural feature: relatively concave epitope surfaces that provide complementary pockets for single-domain antibody engagement, whereas the worst-performing targets (EGFRvIII, HER2 Domain~IV) present convex or geometrically novel surfaces.
+Fourth, the framework-aligned H3 RMSD was consistently low across all campaigns (medians 1.0--1.6\,\AA), confirming that the CDR loops themselves are well-designed in isolation; the failure mode is incorrect CDR positioning relative to the target, which is governed by the geometric compatibility between epitope shape and the diffusion model's backbone sampling distribution.
+Nonetheless, model bias cannot be entirely excluded.
+RFdiffusion was trained predominantly on existing antibody--antigen complexes, which are enriched for certain epitope geometries (e.g., flat or concave surfaces) and may underrepresent neoepitopes or membrane-proximal domains.
+Disentangling model bias from intrinsic difficulty will require benchmarking across a larger and more diverse target set, ideally with experimental binding data as ground truth.
 
 \subsection{Limitations}
 
@@ -569,19 +581,19 @@ Computational resources were provided by Modal (modal.com).
 \small
 
 \bibitem{watson2025}
-Watson JL, et al.
-De novo design of high-affinity antibody variable regions.
+Bennett NR, Watson JL, et al.
+Atomically accurate de novo design of antibodies with RFdiffusion.
 \textit{Nature}. 2025. doi:10.1038/s41586-025-09721-5
 
 \bibitem{shanehsazzadeh2025}
 Shanehsazzadeh A, et al.
 Unlocking de novo antibody design with generative artificial intelligence.
-\textit{bioRxiv}. 2025. doi:10.1101/2024.07.05.602291
+\textit{bioRxiv}. 2023. doi:10.1101/2023.01.08.523187
 
 \bibitem{chaidiscovery2025}
-Chai Discovery.
-Chai-2: generalized single-step antibody structure and binding prediction.
-Technical Report. 2025.
+Boitreaud J, Dent J, Geisz D, et al. (Chai Discovery Team).
+Zero-shot antibody design in a 24-well plate.
+\textit{bioRxiv}. 2025. doi:10.1101/2025.07.05.663018
 
 \bibitem{arvanitis2020}
 Arvanitis CD, Ferraro GB, Jain RK.
@@ -595,18 +607,18 @@ Pancreatic cancer stroma: an update on therapeutic targeting strategies.
 
 \bibitem{b7h3cart2025}
 Vitanza NA, et al.
-Intracerebroventricular B7-H3 CAR T cells for diffuse intrinsic pontine glioma: a phase 1 clinical trial.
-\textit{Nature Medicine}. 2025;31:272--281.
+Intracerebroventricular B7-H3-targeting CAR T cells for diffuse intrinsic pontine glioma: a phase 1 trial.
+\textit{Nature Medicine}. 2025;31:861--868. doi:10.1038/s41591-024-03451-3
 
 \bibitem{li2012}
 Li T, et al.
-Cell-penetrating anti-GFAP VHH and corresponding fluorescent fusion protein VHH-GFP spontaneously cross the blood--brain barrier.
-\textit{Journal of Neurochemistry}. 2012;123(6):801--807.
+Cell-penetrating anti-GFAP VHH and corresponding fluorescent fusion protein VHH-GFP spontaneously cross the blood--brain barrier and specifically recognize astrocytes.
+\textit{FASEB Journal}. 2012;26(10):3969--3979. doi:10.1096/fj.11-201384
 
 \bibitem{opentargets2024}
 Ochoa D, et al.
-The Open Targets Platform: accelerating systematic drug--target identification.
-\textit{Nucleic Acids Research}. 2024;52(D1):D1328--D1337.
+The next-generation Open Targets Platform: reimagined, redesigned, rebuilt.
+\textit{Nucleic Acids Research}. 2023;51(D1):D1353--D1359. doi:10.1093/nar/gkac1046
 
 \bibitem{dauparas2022}
 Dauparas J, et al.
@@ -624,19 +636,19 @@ Identification of GPC2 as an oncoprotein and candidate immunotherapeutic target 
 \textit{Cancer Cell}. 2017;32(3):295--309.
 
 \bibitem{ceacam5structure2024}
-Temmam Z, et al.
-Structural basis of tusamitamab binding to CEACAM5.
-\textit{Nature Communications}. 2024;15:9263.
+Kumar A, et al.
+Structural insights into epitope--paratope interactions of a monoclonal antibody targeting CEACAM5-expressing tumors.
+\textit{Nature Communications}. 2024;15:9377. doi:10.1038/s41467-024-53746-9
 
 \bibitem{msln15b62022}
-Ho M, et al.
-Structure of mesothelin C-terminal region in complex with antibody 15B6.
-\textit{PNAS}. 2022;119(22):e2202439119.
+Zhan J, Lin D, Watson N, et al.
+Structures of cancer antigen mesothelin and its complexes with therapeutic antibodies.
+\textit{Cancer Research Communications}. 2023;3(2):175--191. doi:10.1158/2767-9764.CRC-22-0306
 
 \bibitem{epha21c12011}
-Peng L, et al.
-Structural basis of EphA2 recognition by 1C1 monoclonal antibody.
-\textit{J.\ Mol.\ Biol.}\ 2011;414(4):588--600.
+Peng L, Oganesyan V, Damschroder MM, Wu H, Dall'Acqua WF.
+Structural and functional characterization of an agonistic anti-human EphA2 monoclonal antibody.
+\textit{J.\ Mol.\ Biol.}\ 2011;413(2):390--405. doi:10.1016/j.jmb.2011.08.018
 
 \end{thebibliography}
 
