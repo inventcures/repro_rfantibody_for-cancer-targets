@@ -1,5 +1,7 @@
 # rfab-harness
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/inventcures/repro_rfantibody_for-cancer-targets)
+
 Campaign orchestration harness for [RFAntibody](https://github.com/RosettaCommons/RFAntibody) — the de novo antibody design pipeline from Bennett et al., *"Atomically accurate de novo design of single-domain antibodies"* (Nature, 2025).
 
 Wraps the 3-stage pipeline (RFdiffusion → ProteinMPNN → RF2) with campaign configuration, target preparation, automated analysis, and 21 pre-built configs for cancer and rare disease targets.
