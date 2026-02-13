@@ -76,26 +76,32 @@ def download_logs(campaigns: list[str]) -> dict[str, Path]:
 
 
 def parse_scores(qv_path: Path) -> "pd.DataFrame":
+    """Parse QV_SCORE lines from RF2 prediction quivers.
+
+    Format: QV_SCORE <tag> interaction_pae=11.41|pae=6.48|pred_lddt=0.91|...
+    The metrics are pipe-delimited key=value pairs after the tag.
+    """
     import pandas as pd
 
     records = []
-    current_tag = None
     with open(qv_path) as f:
         for line in f:
-            line = line.strip()
-            if line.startswith("QV_TAG"):
-                current_tag = line.split(None, 1)[1] if " " in line else None
-            elif line.startswith("QV_SCORE") and current_tag:
-                parts = line.split()
-                record = {"tag": current_tag}
-                for part in parts[1:]:
-                    if "=" in part:
-                        k, v = part.split("=", 1)
-                        try:
-                            record[k] = float(v)
-                        except ValueError:
-                            record[k] = v
-                records.append(record)
+            if not line.startswith("QV_SCORE"):
+                continue
+            parts = line.strip().split(None, 2)
+            if len(parts) < 3:
+                continue
+            tag = parts[1]
+            record = {"tag": tag}
+            for kv in parts[2].split("|"):
+                if "=" not in kv:
+                    continue
+                k, v = kv.split("=", 1)
+                try:
+                    record[k] = float(v)
+                except ValueError:
+                    record[k] = v
+            records.append(record)
     return pd.DataFrame(records) if records else pd.DataFrame(columns=["tag"])
 
 
@@ -118,30 +124,32 @@ def analyze_campaign(name: str, qv_path: Path) -> dict:
     if scores.empty:
         return {"campaign": name, "total_designs": 0, "error": "no scores parsed"}
 
-    pae_col = next((c for c in ["pae", "pae_interaction", "pae_int"] if c in scores.columns), None)
-    rmsd_col = next((c for c in ["rmsd", "ca_rmsd", "bb_rmsd"] if c in scores.columns), None)
-    ddg_col = next((c for c in ["ddg", "dG_separated", "dG"] if c in scores.columns), None)
-
-    # Standardize column names
+    # RF2 output columns: interaction_pae, pae, pred_lddt,
+    # target_aligned_antibody_rmsd, target_aligned_cdr_rmsd,
+    # framework_aligned_antibody_rmsd, framework_aligned_cdr_rmsd,
+    # framework_aligned_H1/H2/H3_rmsd (VHH has no L-chain RMSDs)
+    #
+    # Standardize to canonical names for filtering/ranking:
+    #   pae -> pae (already correct)
+    #   target_aligned_cdr_rmsd -> rmsd (primary structural metric)
     col_map = {}
-    if pae_col and pae_col != "pae":
-        col_map[pae_col] = "pae"
-    if rmsd_col and rmsd_col != "rmsd":
-        col_map[rmsd_col] = "rmsd"
-    if ddg_col and ddg_col != "ddg":
-        col_map[ddg_col] = "ddg"
+    if "target_aligned_cdr_rmsd" in scores.columns:
+        col_map["target_aligned_cdr_rmsd"] = "rmsd"
     if col_map:
         scores = scores.rename(columns=col_map)
-        pae_col = "pae" if pae_col else None
-        rmsd_col = "rmsd" if rmsd_col else None
-        ddg_col = "ddg" if ddg_col else None
 
     scores.to_csv(out_dir / "scores.csv", index=False)
 
     total = len(scores)
     summary = {"campaign": name, "total_designs": total, "score_columns": list(scores.columns)}
 
-    for metric in ["pae", "rmsd", "ddg"]:
+    KEY_METRICS = [
+        "interaction_pae", "pae", "pred_lddt", "rmsd",
+        "target_aligned_antibody_rmsd", "framework_aligned_antibody_rmsd",
+        "framework_aligned_cdr_rmsd",
+        "framework_aligned_H1_rmsd", "framework_aligned_H2_rmsd", "framework_aligned_H3_rmsd",
+    ]
+    for metric in KEY_METRICS:
         if metric in scores.columns and scores[metric].notna().any():
             s = scores[metric].dropna()
             summary[f"{metric}_min"] = float(s.min())
@@ -152,13 +160,15 @@ def analyze_campaign(name: str, qv_path: Path) -> dict:
             summary[f"{metric}_max"] = float(s.max())
             summary[f"{metric}_std"] = float(s.std())
 
-    # Filtering
+    # Filtering: pae < 10, rmsd (target_aligned_cdr_rmsd) < 2.0
+    # No ddG from RF2 (that's a Rosetta metric)
     mask = pd.Series(True, index=scores.index)
     if "pae" in scores.columns:
         mask &= scores["pae"] < PAE_THRESHOLD
     if "rmsd" in scores.columns:
         mask &= scores["rmsd"] < RMSD_THRESHOLD
-    if ddg_col and "ddg" in scores.columns and scores["ddg"].notna().any():
+    ddg_col = next((c for c in ["ddg", "dG_separated"] if c in scores.columns), None)
+    if ddg_col and scores[ddg_col].notna().any():
         mask &= scores["ddg"] < DDG_THRESHOLD
 
     filtered = scores[mask].copy()
@@ -195,7 +205,11 @@ def analyze_campaign(name: str, qv_path: Path) -> dict:
         filtered.to_csv(out_dir / "ranked.csv", index=False)
 
         top = filtered.head(10)
-        summary["top10"] = top[["rank", "tag"] + [c for c in ["pae", "rmsd", "ddg", "composite_score"] if c in top.columns]].to_dict("records")
+        top_cols = ["rank", "tag"] + [c for c in [
+            "pae", "interaction_pae", "rmsd", "pred_lddt",
+            "framework_aligned_H3_rmsd", "composite_score",
+        ] if c in top.columns]
+        summary["top10"] = top[top_cols].to_dict("records")
 
         if len(filtered) > 0:
             best = filtered.iloc[0]

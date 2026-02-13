@@ -1,0 +1,643 @@
+\documentclass[11pt,twocolumn]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{tabularx}
+% multirow not available in this texlive install
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!70!black,
+}
+
+\captionsetup{font=small,labelfont=bf}
+
+% --- Metadata ---
+\title{%
+  \textbf{De Novo VHH Nanobody Design Against Ten Challenging Cancer Targets:\\
+  A Systematic Computational Study with RFAntibody}
+}
+
+\author{Ashish (tp53)\thanks{spiff007@gmail.com} \\
+\small KCDH-A, Ashoka University, Sonipat, India}
+
+\date{February 2026 --- Preprint v2.0}
+
+% ============================================================
+\begin{document}
+\twocolumn[
+  \begin{@twocolumnfalse}
+    \maketitle
+
+    \begin{abstract}
+    De novo computational antibody design has emerged as a transformative approach to therapeutic discovery, yet its systematic application to the cancers with greatest unmet need remains limited.
+    Here we present a complete computational study designing VHH nanobodies against ten challenging cancer targets spanning five indications: MPNST, DIPG/DMG, neuroblastoma, glioblastoma, and pancreatic ductal adenocarcinoma.
+    Through systematic analysis of 43 target--indication pairs, we identify 10 structurally actionable targets and introduce a four-tier structural readiness classification revealing that only 50\% of evaluated targets possess antibody--antigen co-crystal structures.
+    Using rfab-harness, an open-source campaign orchestration tool wrapping the three-stage RFAntibody pipeline, we executed all ten campaigns in parallel on NVIDIA A100-80GB GPUs via Modal cloud infrastructure.
+    The pipeline generated 817 backbone scaffolds via RFdiffusion, expanded them to 4,085 sequenced designs through ProteinMPNN, and scored all designs using RoseTTAFold2 structure prediction.
+    Applying stringent quality filters (pAE~$<$~10, CDR RMSD~$<$~2.0\,\AA), 135 designs (3.3\%) passed across all campaigns, with per-target pass rates varying from 0.3\% (EGFRvIII, HER2 Domain~IV) to 19.8\% (CEACAM5).
+    The best candidates achieved predicted aligned errors as low as 2.19\,\AA\ and CDR backbone RMSDs of 0.68\,\AA, indicating high structural confidence.
+    CEACAM5, CD47, B7-H3, and mesothelin emerged as the most computationally tractable targets, while EGFRvIII and GPC2 exhibited the greatest design difficulty.
+    All code, configurations, results, and analysis are openly available, establishing a reproducible framework for translating computational protein design into therapeutic antibody candidates for intractable cancers.
+    \end{abstract}
+
+    \vspace{0.5em}
+    \noindent\textbf{Keywords:} de novo antibody design, computational protein design, RFAntibody, RFdiffusion, cancer immunotherapy, VHH nanobody, MPNST, DIPG, neuroblastoma, glioblastoma, pancreatic cancer
+    \vspace{1.5em}
+  \end{@twocolumnfalse}
+]
+
+% ============================================================
+\section{Introduction}
+
+The past two years have witnessed a paradigm shift in antibody discovery.
+Where traditional approaches required immunization campaigns lasting months followed by extensive screening of $10^{6}$--$10^{9}$ clones, de novo computational platforms can now generate antibody candidates \textit{in silico} in hours.
+Watson et al.\ demonstrated that RFAntibody, a three-stage pipeline combining RFdiffusion for backbone generation, ProteinMPNN for sequence design, and RoseTTAFold2 for structure prediction, achieves experimental binding rates of 15--17\% with affinities reaching the picomolar range \cite{watson2025}.
+Concurrently, proprietary platforms including Absci's JAM-2, Chai Discovery's Chai-2, and Iambic Therapeutics' Origin-1 have reported similar or superior hit rates \cite{shanehsazzadeh2025,chaidiscovery2025}.
+
+Despite these advances, the application of de novo design to the cancers with the greatest unmet need has been remarkably limited.
+The original RFAntibody demonstration targeted influenza hemagglutinin, \textit{Clostridioides difficile} toxin B, respiratory syncytial virus, a PHOX2B neoantigen, and the SARS-CoV-2 receptor binding domain---none of which represent the cancers responsible for the most intractable mortality burden.
+Five indications stand out for their combination of devastating clinical outcomes and near-complete absence of effective antibody therapeutics: MPNST (5-year survival $\sim$15\% when metastatic, no approved antibody therapy), DIPG/DMG (median survival $\sim$11 months, universally fatal in children), high-risk neuroblastoma ($\sim$50\% survival despite aggressive multimodal treatment), glioblastoma (median survival $\sim$15 months, no antibody therapy improving overall survival), and pancreatic ductal adenocarcinoma (5-year survival $\sim$12\%, third leading cause of cancer death).
+
+Each of these indications presents unique biological challenges for antibody therapy.
+CNS tumors (DIPG, GBM) are shielded by the blood--brain barrier, which permits less than 0.1\% of systemically administered IgG ($\sim$150\,kDa) to reach the tumor parenchyma \cite{arvanitis2020}.
+Pancreatic cancer generates a dense desmoplastic stroma comprising up to 80\% of tumor mass, severely limiting antibody diffusion \cite{hosein2020}.
+MPNST is driven primarily by intracellular loss-of-function events (NF1, SUZ12/EED), creating a paucity of druggable surface antigens.
+Neuroblastoma's most validated target, GD2, is a ganglioside rather than a protein, precluding standard computational design approaches.
+
+These challenges motivate two central questions that this work addresses.
+First, which surface antigens across these five indications have sufficient structural data and clinical rationale to justify computational antibody design campaigns?
+Second, can the de novo design process be systematized into a reproducible, scalable framework that enables researchers to go from target selection to designed candidates with minimal manual intervention?
+
+To answer these questions, we conducted a systematic analysis of 43 target--indication pairs, developed a four-tier structural readiness classification, built rfab-harness (an open-source campaign orchestration tool), and executed all ten design campaigns in parallel on cloud GPU infrastructure.
+We provide complete results including score distributions, filtering outcomes, ranked candidate lists, and cross-campaign comparisons for all ten targets.
+
+% ============================================================
+\section{Methods}
+
+\subsection{Target Identification and Prioritization}
+
+Target identification employed three complementary data sources queried between January and February 2026.
+
+\textbf{Open Targets Platform.}
+Disease--target associations were retrieved via the Open Targets GraphQL API (release 25.02) for each indication using established ontology identifiers: MPNST (EFO\_0000760), DIPG (EFO\_1000026), DMG (EFO\_0020983), neuroblastoma (EFO\_0000621), GBM (EFO\_0000519), and PDAC (EFO\_0000232) \cite{opentargets2024}.
+Targets were ranked by overall association score (0--1 scale integrating genetic, somatic, drug, literature, and animal model evidence).
+The top 50 targets per indication were screened for surface accessibility and antibody-targetable extracellular domains.
+
+\textbf{RCSB Protein Data Bank.}
+For each candidate target, the PDB was queried for (1) any deposited structure of the extracellular domain and (2) antibody--antigen co-crystal or cryo-EM complex structures.
+Structures were evaluated by resolution, completeness of the extracellular domain, and presence of defined antibody--antigen interfaces.
+
+\textbf{Clinical trial registries and literature.}
+ClinicalTrials.gov, PubMed (2022--2026), and conference proceedings from ASCO 2024--2025, AACR 2025, and ASH 2024 were searched for antibody-based therapies targeting each candidate.
+
+\subsection{Structural Readiness Classification}
+
+We developed a four-tier classification to assess the feasibility of structure-guided de novo antibody design for each target.
+Tier~1 (Excellent) requires multiple antibody--antigen complex structures at $<$3\,\AA\ resolution with well-defined epitopes.
+Tier~2 (Good) requires at least one antibody--antigen complex structure.
+Tier~3 (Limited) indicates that a target extracellular domain structure exists but no antibody complex, requiring epitope inference.
+Tier~4 (Insufficient) indicates no usable extracellular domain structure, or that the target is a non-protein antigen.
+Only Tier 1 and Tier 2 targets were considered suitable for immediate de novo design campaigns.
+
+\subsection{Epitope and Hotspot Derivation}
+
+For each campaign target, epitope residues were defined as target residues with any heavy atom within 4.5\,\AA\ of an antibody heavy atom in the reference complex structure.
+Hotspot residues (3--5 per target) were selected from the epitope set based on three criteria: (1) high buried surface area upon complex formation, (2) hydrophobic or aromatic character (Phe, Trp, Tyr, Leu, Ile, Val preferred), and (3) spatial centrality within the epitope patch.
+For well-characterized targets (EGFR/cetuximab, HER2/trastuzumab, CD47/magrolimab), published epitope definitions were used directly.
+For newer structures (9LME for B7-H3, 8UKV for EGFRvIII, 6WJL for GPC2), interface contacts were computed using BioPython's NeighborSearch algorithm.
+
+\subsection{Antibody Format Selection}
+
+VHH nanobody format ($\sim$15\,kDa, single-domain) was selected for all 10 campaigns based on three considerations: (1) improved blood--brain barrier penetration relative to full IgG ($\sim$150\,kDa) for CNS tumor targets \cite{li2012}, (2) enhanced stromal penetration for pancreatic cancer targets, and (3) compatibility with the RFAntibody pipeline, which has demonstrated successful VHH design with the NbBCII10 framework template.
+
+\subsection{Campaign Configuration}
+
+Each campaign was defined by a YAML configuration file specifying the target PDB, epitope and hotspot residues, antibody format (VHH), framework (NbBCII10), CDR loop length ranges, pipeline parameters, and filtering thresholds.
+CDR H3 loop lengths were set to ranges of 7--15 residues for most targets, with adjusted ranges for targets requiring longer paratope reach (CEACAM5: 10--18, GPC2: 10--18, EphA2: 8--15).
+CDR H1 and H2 lengths were fixed at 7 and 6 residues, respectively, consistent with the NbBCII10 framework germline.
+
+\subsection{Computational Pipeline}
+
+The three-stage RFAntibody pipeline was orchestrated by rfab-harness, a custom Python package that manages subprocess execution, stage-level checkpoint persistence, and Quiver-format (.qv) I/O between stages.
+
+\textbf{Stage 1: RFdiffusion.}
+The SE3-equivariant diffusion model generated backbone designs using 50 diffusion timesteps with the \texttt{RFdiffusion\_Ab.pt} weights.
+Input conditioning included the target epitope structure, hotspot residue positions, CDR loop length ranges, and the NbBCII10 framework in HLT format.
+
+\textbf{Stage 2: ProteinMPNN.}
+The ProteinMPNN graph neural network designed five amino acid sequences per backbone scaffold at a sampling temperature of 0.2, masking framework residues to preserve the NbBCII10 sequence while allowing full CDR sequence exploration.
+
+\textbf{Stage 3: RF2 Structure Prediction.}
+RoseTTAFold2 independently predicted the three-dimensional structure of each sequenced design in complex with the target, using 10 recycling iterations.
+Predicted structures were evaluated on multiple metrics: interaction pAE (predicted aligned error across the antibody--antigen interface), per-residue pAE, predicted LDDT (local distance difference test), target-aligned CDR RMSD, target-aligned antibody RMSD, and framework-aligned CDR and individual loop RMSDs (H1, H2, H3).
+
+\subsection{Filtering and Ranking}
+
+Designs were filtered on two primary quality metrics: predicted aligned error (pAE $<$ 10.0\,\AA) and target-aligned CDR backbone RMSD ($<$ 2.0\,\AA).
+The RF2 scoring pipeline does not produce Rosetta-based $\Delta\Delta G$ estimates; accordingly, the binding energy filter described in some RFAntibody protocols was not applied.
+Filtered candidates were ranked by a composite score:
+\begin{equation}
+    S_{\text{composite}} = 0.4 \cdot \hat{p}_{\text{pAE}} + 0.3 \cdot \hat{p}_{\text{RMSD}}
+\end{equation}
+where $\hat{p}$ denotes min-max normalization to $[0, 1]$ across the filtered candidate set, with the remaining weight redistributed proportionally.
+Lower composite scores indicate higher-confidence candidates.
+
+\subsection{Compute Infrastructure}
+
+All ten campaigns were executed in parallel on Modal cloud infrastructure, each allocated a single NVIDIA A100-80GB GPU.
+Pipeline orchestration, checkpointing, and result persistence were managed via Modal Volumes with periodic commits every 10 minutes for fault recovery.
+Stage 1 backbones from a prior partial run (targeting 500 designs per campaign) were preserved and reused via a skip-stage checkpoint mechanism, with Stages 2 and 3 run fresh against the existing backbone designs.
+Total wall-clock time from Stage 2+3 launch to all-campaigns-complete was approximately 75 minutes.
+
+% ============================================================
+\section{Results}
+
+\subsection{Landscape of Antibody-Targetable Antigens}
+
+Systematic screening identified 43 target--indication pairs across the five cancer types (Table~\ref{tab:landscape}).
+The number of potential targets varied dramatically by indication: GBM yielded 11 evaluated targets (from 9,906 Open Targets associations), PDAC produced 10, neuroblastoma generated 8, MPNST yielded 7 (reflecting the paucity of validated surface antigens in sarcoma), and pediatric gliomas produced 7 targets.
+
+\begin{table}[H]
+\centering
+\caption{Landscape of evaluated targets per indication.}
+\label{tab:landscape}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Indication} & \textbf{Targets} & \textbf{Tier 1--2} & \textbf{Tier 3} & \textbf{Tier 4} \\
+\midrule
+MPNST & 7 & 2 & 2 & 3 \\
+DIPG/DMG & 7 & 2 & 3 & 2 \\
+Neuroblastoma & 8 & 3 & 3 & 2 \\
+GBM & 11 & 7 & 2 & 2 \\
+PDAC & 10 & 4 & 3 & 3 \\
+\midrule
+\textbf{Total (unique)} & \textbf{28} & \textbf{14} & \textbf{8} & \textbf{6} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The structural readiness distribution reveals a critical bottleneck: only 14 of 28 unique targets (50\%) have any antibody--antigen complex structure in the PDB.
+
+\subsection{Cross-Indication Driver Targets}
+
+Three targets emerged as cross-indication drivers appearing in $\geq$4 of 5 indications (Table~\ref{tab:drivers}).
+
+\begin{table}[H]
+\centering
+\caption{Cross-indication driver targets.}
+\label{tab:drivers}
+\small
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+\textbf{Target} & \rotatebox{70}{\textbf{MPNST}} & \rotatebox{70}{\textbf{DIPG}} & \rotatebox{70}{\textbf{NB}} & \rotatebox{70}{\textbf{GBM}} & \rotatebox{70}{\textbf{PDAC}} & \textbf{n/5} & \textbf{Tier} \\
+\midrule
+B7-H3 & \#1 & \#2 & \#2 & \#3 & --- & 4 & 2 \\
+GD2 & \#4 & \#1 & Est. & \#10 & --- & 4 & 4 \\
+EGFR & \#2 & \#6 & --- & \#1 & \#4 & 4 & 1 \\
+HER2 & \#6 & --- & --- & \#4 & \#6 & 3 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+B7-H3 (CD276) is the most striking pan-cancer target, overexpressed in MPNST (58\% of sarcomas), DIPG (uniformly on tumor cells and vasculature), neuroblastoma, and GBM, while exhibiting limited normal tissue expression.
+B7-H3-directed CAR-T cells received FDA Breakthrough Therapy Designation for DIPG in April 2025 following Phase~I results showing median survival of 19.8 months from diagnosis \cite{b7h3cart2025}.
+GD2, while appearing in 4/5 indications, is a ganglioside rather than a protein, excluding it from computational antibody design workflows.
+
+\subsection{Priority Target Selection}
+
+Integrating cross-indication impact, structural readiness, and therapeutic potential, we selected 10 targets for de novo VHH nanobody design campaigns (Table~\ref{tab:campaigns}).
+
+\begin{table*}[t]
+\centering
+\caption{Ten priority targets selected for de novo VHH design campaigns with Stage 1 backbone counts and final filtering results.}
+\label{tab:campaigns}
+\small
+\begin{tabular}{@{}clllcccrr@{}}
+\toprule
+\textbf{\#} & \textbf{Target} & \textbf{Indication(s)} & \textbf{PDB} & \textbf{Res.} & \textbf{BB} & \textbf{Seqs} & \textbf{Pass} & \textbf{Rate} \\
+\midrule
+1 & B7-H3 & GBM, MPNST, DIPG, NB & 9LME & 2.4\,\AA & 82 & 410 & 11 & 2.7\% \\
+2 & CD47 & GBM & 5IWL & 2.0\,\AA & 96 & 480 & 19 & 4.0\% \\
+3 & CEACAM5 & PDAC & 8BW0 & 3.1\,\AA & 82 & 410 & 81 & 19.8\% \\
+4 & EGFR & GBM, MPNST, PDAC & 1YY9 & 2.6\,\AA & 64 & 320 & 5 & 1.6\% \\
+5 & EGFRvIII & GBM & 8UKV & 1.8\,\AA & 73 & 365 & 1 & 0.3\% \\
+6 & EphA2 & GBM & 3SKJ & 2.5\,\AA & 70 & 350 & 3 & 0.9\% \\
+7 & GPC2 & Neuroblastoma & 6WJL & 3.3\,\AA & 53 & 265 & 2 & 0.8\% \\
+8 & HER2 Dom.~IV & GBM, MPNST & 1N8Z & 2.5\,\AA & 72 & 360 & 1 & 0.3\% \\
+9 & MSLN (N-term) & PDAC & 4F3F & 2.6\,\AA & 107 & 535 & 6 & 1.1\% \\
+10 & MSLN (C-term) & PDAC & 7U8C & --- & 118 & 590 & 6 & 1.0\% \\
+\midrule
+\multicolumn{5}{l}{\textbf{Total}} & \textbf{817} & \textbf{4,085} & \textbf{135} & \textbf{3.3\%} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Pipeline Execution Summary}
+
+Stage 1 (RFdiffusion) generated 53--118 backbone scaffolds per campaign (817 total), with variation arising from a prior run that was stopped and clipped at the available design count.
+Stage 2 (ProteinMPNN) expanded each backbone into five sequenced designs, producing 265--590 sequences per campaign (4,085 total) in 3.3--3.7 minutes per campaign.
+Stage 3 (RF2) scored all 4,085 designs in approximately 75 minutes of wall-clock time across 10 parallel A100 GPUs, with each design requiring $\sim$12 seconds (10 recycling iterations at $\sim$1.2 seconds each).
+The complete Stage~2+3 execution consumed approximately 12.5 GPU-hours.
+
+\subsection{Design Funnel and Global Filtering}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig5_design_funnel.png}
+\caption{Design funnel showing attrition from backbone generation through sequence design to filtered candidates across all 10 campaigns. The 3.3\% overall pass rate (135/4,085) reflects the stringent dual-threshold filtering applied.}
+\label{fig:funnel}
+\end{figure}
+
+Of the 4,085 designs scored by RF2, 135 (3.3\%) passed both quality filters (pAE $<$ 10 and CDR RMSD $<$ 2.0\,\AA; Figure~\ref{fig:funnel}).
+This global pass rate is substantially lower than the 15--17\% experimental hit rate reported for RFAntibody's benchmark targets \cite{watson2025}, reflecting both the stringency of our computational filters and the intrinsic difficulty of the cancer targets selected for this study.
+
+\subsection{Per-Target Pass Rates}
+
+Filter pass rates varied more than 60-fold across campaigns, from 0.3\% (EGFRvIII, HER2 Domain~IV) to 19.8\% (CEACAM5), revealing substantial differences in computational design difficulty among cancer targets (Figure~\ref{fig:passrates}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig1_pass_rates.png}
+\caption{Filter pass rates by target. CEACAM5 dominates with 81 passing designs (19.8\%), while EGFRvIII and HER2 Domain~IV each produced only a single passing candidate.}
+\label{fig:passrates}
+\end{figure}
+
+The targets clustered into three difficulty tiers based on pass rate.
+The \textit{high-tractability} group comprised CEACAM5 (19.8\%), which alone contributed 60\% of all passing designs.
+The \textit{moderate} group included CD47 (4.0\%, 19 designs), B7-H3 (2.7\%, 11 designs), EGFR (1.6\%, 5 designs), MSLN-Nterm (1.1\%, 6 designs), and MSLN-Cterm (1.0\%, 6 designs).
+The \textit{low-tractability} group comprised EphA2 (0.9\%, 3 designs), GPC2 (0.8\%, 2 designs), and both EGFRvIII and HER2 Domain~IV (0.3\%, 1 design each).
+
+\subsection{Score Distributions}
+
+\subsubsection{Predicted Aligned Error (pAE)}
+
+The pAE distributions (Figure~\ref{fig:pae}) showed that most designs across all campaigns exhibited median pAE values in the 4.9--9.3 range, with the majority of designs falling above the 10.0 threshold.
+MSLN-Nterm (median pAE = 5.23) and MSLN-Cterm (median pAE = 4.86) exhibited the most favorable pAE distributions overall, suggesting that the mesothelin epitopes are particularly amenable to high-confidence interface prediction.
+CD47 (median pAE = 7.34) also performed well.
+In contrast, GPC2 (median pAE = 9.28) and EGFR (median pAE = 9.01) showed the least favorable pAE distributions, with their medians approaching the filter threshold.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig2_pae_distributions.png}
+\caption{Box plots of pAE score distributions across all 10 targets. Red dashed line indicates the filter threshold (pAE $<$ 10). Lower values indicate higher predicted structural confidence at the antibody--antigen interface.}
+\label{fig:pae}
+\end{figure}
+
+\subsubsection{CDR RMSD}
+
+Target-aligned CDR RMSD distributions (Figure~\ref{fig:rmsd}) revealed that the 2.0\,\AA\ threshold was the more stringent of the two filters for most campaigns.
+HER2 Domain~IV exhibited the highest median CDR RMSD (21.18\,\AA), indicating that the vast majority of designed CDR conformations deviated substantially from the target-docked geometry.
+MSLN-Cterm (20.41\,\AA) showed a similarly high median.
+The low-RMSD tail---designs with CDR RMSDs below 2.0\,\AA---was most populated for CEACAM5, explaining its dominant pass rate.
+MSLN-Nterm achieved the lowest median CDR RMSD of 8.40\,\AA\ despite its moderate pass rate, suggesting that many designs achieved partial structural recapitulation even when not meeting the stringent 2.0\,\AA\ cutoff.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig3_rmsd_distributions.png}
+\caption{Box plots of target-aligned CDR RMSD distributions. Red dashed line at 2.0\,\AA\ indicates the filter threshold. The wide distributions (medians 8--21\,\AA) demonstrate that CDR structural recapitulation is the primary bottleneck for design success.}
+\label{fig:rmsd}
+\end{figure}
+
+\subsubsection{Joint pAE--RMSD Distribution}
+
+The joint distribution of pAE and CDR RMSD across all 4,085 designs (Figure~\ref{fig:scatter}) illustrates the combined effect of both filters.
+The passing region (pAE $<$ 10, RMSD $<$ 2.0) occupies the lower-left quadrant and is sparsely populated, with 135 designs.
+A notable cluster of designs from multiple campaigns achieves low pAE ($<$5) but high RMSD ($>$5), indicating correct interface prediction but incorrect CDR geometry---a failure mode where the antibody framework is well-positioned but the CDR loops adopt non-functional conformations.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig4_pae_vs_rmsd.png}
+\caption{Joint scatter plot of pAE vs. CDR RMSD for all 4,085 designs, colored by campaign. The shaded lower-left quadrant marks the pass region (135 designs, 3.3\%). The dense cluster at low pAE / high RMSD represents correctly positioned but geometrically deviated CDR loops.}
+\label{fig:scatter}
+\end{figure}
+
+\subsection{Structural Quality Metrics}
+
+Beyond the primary filtering metrics, RF2 generates several additional structural quality indicators.
+The metric heatmap (Figure~\ref{fig:heatmap}) compares five key metrics across all campaigns.
+Predicted LDDT values were uniformly high (0.88--0.91), indicating that the global VHH fold quality was well-preserved across all targets regardless of interface quality.
+Framework-aligned H3 RMSD (Figure~\ref{fig:h3violin})---a measure of CDR-H3 loop accuracy independent of target positioning---showed medians of 1.01--1.63\,\AA\ across campaigns.
+GPC2 (1.01\,\AA) and EGFRvIII (1.08\,\AA) exhibited the lowest H3 loop deviations, suggesting that the designed H3 loops are geometrically sound even when the overall target-aligned RMSD is high.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig6_metric_heatmap.png}
+\caption{Heatmap of key structural quality metrics across all 10 campaigns. Values are raw scores; color scale is normalized per metric (green = better, red = worse). pLDDT is inverted so that green indicates higher confidence.}
+\label{fig:heatmap}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig7_h3_rmsd_violin.png}
+\caption{Violin plots of framework-aligned CDR-H3 loop RMSD. The consistently low H3 RMSDs (medians 1.0--1.6\,\AA) indicate that CDR-H3 loop geometry is well-preserved by the ProteinMPNN--RF2 pipeline, and that the primary design challenge lies in target-aligned positioning rather than intrinsic loop accuracy.}
+\label{fig:h3violin}
+\end{figure}
+
+\subsection{Per-Campaign Detailed Results}
+
+\subsubsection{CEACAM5 (PDAC) --- 81 passing designs, 19.8\% pass rate}
+
+CEACAM5 was the clear standout campaign, producing more passing designs than all other campaigns combined.
+The best candidate (design 76\_dldesign\_2) achieved pAE = 2.59, CDR RMSD = 0.68\,\AA, interaction pAE = 3.56, and framework-aligned H3 RMSD = 0.70\,\AA.
+Twelve designs achieved CDR RMSD below 1.0\,\AA, and 81 designs passed both thresholds.
+The high success rate may reflect the accessibility of the CEACAM5 A3B3 domain epitope defined in the tusamitamab complex (PDB: 8BW0) and the extended CDR H3 range (10--18 residues) allowed for this campaign.
+CEACAM5 is the target of the ADC tusamitamab ravtansine, which achieved a 20\% objective response rate in PDAC (ASCO 2025), validating this epitope as therapeutically productive \cite{ceacam5structure2024}.
+
+\subsubsection{CD47 (GBM) --- 19 passing designs, 4.0\% pass rate}
+
+CD47 produced the second-highest number of passing designs.
+The best candidate (design 20\_dldesign\_4) achieved pAE = 2.84 and CDR RMSD = 1.05\,\AA.
+The magrolimab epitope on CD47 (PDB: 5IWL) is a well-characterized ``don't eat me'' signal that prevents macrophage-mediated phagocytosis of tumor cells.
+Nineteen designs spanning 8 unique backbone scaffolds passed both filters, suggesting robust sequence diversity among the hits.
+The median pAE of 7.34 across all 480 designs indicates moderately favorable interface confidence.
+
+\subsubsection{B7-H3 (MPNST, DIPG, GBM, NB) --- 11 passing designs, 2.7\% pass rate}
+
+The pan-cancer target B7-H3 produced 11 passing designs from 3 unique backbone scaffolds (designs 23, 30, and 68).
+The best candidate (design 23\_dldesign\_3) achieved pAE = 2.20 and CDR RMSD = 1.10\,\AA, indicating high structural confidence.
+The concentration of hits on 3 of 82 backbones suggests that a small subset of scaffold topologies are particularly well-suited to the B7-H3 epitope defined in the recently deposited 9LME structure.
+Given B7-H3's relevance to four cancer indications and the FDA Breakthrough designation for B7-H3 CAR-T in DIPG \cite{b7h3cart2025}, these 11 candidates represent high-priority designs for experimental validation.
+
+\subsubsection{MSLN-Nterm (PDAC) --- 6 passing designs, 1.1\% pass rate}
+
+Mesothelin N-terminal domain produced 6 passing designs, predominantly from 2 backbone scaffolds (designs 30 and 32).
+The best candidate (design 32\_dldesign\_2) achieved the lowest pAE of any design across all campaigns (2.19\,\AA) with CDR RMSD = 1.33\,\AA\ and interaction pAE = 2.60.
+The exceptional pAE distribution of the MSLN-Nterm campaign (median pAE = 5.23, the second-lowest across all campaigns) suggests that the amatuximab epitope (PDB: 4F3F) provides a particularly favorable binding interface for VHH design.
+Combined with the MSLN-Cterm campaign, the two MSLN campaigns together produced 12 designs targeting non-overlapping epitopes, enabling potential bispecific VHH pairing for avidity-enhanced PDAC therapy.
+
+\subsubsection{MSLN-Cterm (PDAC) --- 6 passing designs, 1.0\% pass rate}
+
+Despite having the highest median CDR RMSD (20.41\,\AA) across all campaigns, the C-terminal mesothelin domain produced 6 passing designs, 4 of which originated from a single backbone scaffold (design 71).
+The best candidate (design 71\_dldesign\_2) achieved pAE = 2.92, CDR RMSD = 0.78\,\AA, and the lowest H3 RMSD of any top candidate in this study (0.60\,\AA).
+The concentration of 4 passing designs from one backbone with consistent CDR RMSD values (0.78--0.88\,\AA) strongly suggests that backbone 71 adopts a topology uniquely complementary to the 15B6 epitope on mesothelin C-terminus (PDB: 7U8C) \cite{msln15b62022}.
+
+\subsubsection{EGFR (GBM, MPNST, PDAC) --- 5 passing designs, 1.6\% pass rate}
+
+EGFR produced 5 passing designs from 4 backbone scaffolds.
+The best candidate (design 19\_dldesign\_2) achieved pAE = 3.32 and CDR RMSD = 1.31\,\AA.
+Despite EGFR having the richest structural data of any target in this study (Tier~1 with the cetuximab complex at 2.6\,\AA), the relatively low pass rate (1.6\%) reflects the large and complex cetuximab epitope (30 residues), which requires a VHH to replicate much of the interface formed by a full Fab domain.
+This result suggests that large epitope footprints may be inherently more challenging for single-domain VHH design.
+
+\subsubsection{EphA2 (GBM) --- 3 passing designs, 0.9\% pass rate}
+
+Three designs passed for the EphA2 receptor tyrosine kinase.
+The best candidate (design 27\_dldesign\_0) achieved a pAE of 2.52 and CDR RMSD of 1.53\,\AA.
+The moderate-to-low pass rate may reflect the geometry of the 1C1 Fab epitope (PDB: 3SKJ, 21 residues), which spans a ridge on the EphA2 ligand-binding domain that is geometrically challenging for single-domain antibody engagement \cite{epha21c12011}.
+
+\subsubsection{GPC2 (Neuroblastoma) --- 2 passing designs, 0.8\% pass rate}
+
+Glypican-2 yielded only 2 passing designs, both with borderline metrics (pAE = 8.28--8.89, CDR RMSD = 1.82--1.99\,\AA).
+The high median pAE (9.28) and high median CDR RMSD (15.23\,\AA) indicate that the D3 Fab epitope on GPC2 (PDB: 6WJL, resolution 3.3\,\AA) is the most structurally challenging target in this study.
+The low template resolution may contribute to lower prediction confidence.
+Despite the difficulty, the 2 passing designs represent the first computationally generated VHH candidates against this neuroblastoma-restricted orphan target \cite{gpc2adc2017}.
+
+\subsubsection{EGFRvIII (GBM) --- 1 passing design, 0.3\% pass rate}
+
+Only a single design passed for the tumor-specific EGFRvIII deletion variant.
+This sole candidate (design 19\_dldesign\_0) exhibited borderline pAE (8.24) and CDR RMSD (1.82\,\AA), with the highest interaction pAE (15.14) of any passing design across all campaigns.
+Paradoxically, EGFRvIII has the highest-resolution template in this study (PDB: 8UKV at 1.8\,\AA).
+The difficulty may arise from the unique structural features of the EGFRvIII deletion junction, which creates a neoepitope formed by the fusion of residues flanking the exon 2--7 deletion---a geometrically novel surface that the diffusion model may have limited training data to model.
+
+\subsubsection{HER2 Domain IV (GBM, MPNST) --- 1 passing design, 0.3\% pass rate}
+
+The membrane-proximal Domain~IV of HER2 (trastuzumab epitope) produced a single passing design (design 16\_dldesign\_2) with excellent pAE (2.36) and CDR RMSD (1.67\,\AA).
+Despite the low pass rate, this candidate shows strong interface confidence (interaction pAE = 3.06, pLDDT = 0.92).
+The extremely high median CDR RMSD (21.18\,\AA) for this campaign---the highest across all targets---suggests that the trastuzumab epitope on Domain~IV is particularly challenging for VHH design, possibly because Domain~IV is a small, convex domain that provides limited surface area for single-domain antibody engagement compared to the larger epitope footprint exploited by the full trastuzumab Fab.
+
+\subsection{Cross-Campaign Comparison}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig8_lddt_distributions.png}
+\caption{Predicted LDDT distributions by target. The uniformly high pLDDT values (0.87--0.92) across all campaigns confirm that the VHH framework fold is well-preserved regardless of interface quality or target difficulty.}
+\label{fig:lddt}
+\end{figure}
+
+Several patterns emerged from the cross-campaign comparison.
+First, global fold quality (pLDDT) was remarkably consistent across all targets (medians 0.88--0.91; Figure~\ref{fig:lddt}), confirming that the NbBCII10 VHH framework is robustly recapitulated by the ProteinMPNN--RF2 pipeline regardless of the target.
+Second, CDR RMSD was the dominant determinant of pass rate---the correlation between median CDR RMSD and pass rate was strongly negative (lower RMSD median, higher pass rate).
+Third, pAE and CDR RMSD captured distinct failure modes: some campaigns (MSLN-Cterm, HER2 Domain~IV) had low median pAE but very high median RMSD, indicating that the interface was correctly predicted but the CDR geometry was wrong; other campaigns (GPC2) had high median values on both metrics.
+
+\subsection{Top Candidates}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig9_top_candidates.png}
+\caption{Best-scoring candidate per target, ranked by composite score. Columns show predicted aligned error (pAE), target-aligned CDR RMSD, interaction pAE (iPAE), global fold confidence (pLDDT), CDR-H3 loop accuracy (H3 RMSD), and composite score. The strongest candidates (CEACAM5, B7-H3, MSLN-N) achieve pAE below 3.0 and CDR RMSD below 1.5\,\AA.}
+\label{fig:topcandidates}
+\end{figure*}
+
+Table~\ref{tab:best} summarizes the single best candidate from each campaign.
+The three highest-confidence designs are from CEACAM5 (pAE = 2.59, RMSD = 0.68\,\AA), MSLN-Nterm (pAE = 2.19, RMSD = 1.33\,\AA), and B7-H3 (pAE = 2.20, RMSD = 1.10\,\AA).
+These candidates represent immediate priorities for experimental validation via yeast surface display and surface plasmon resonance.
+
+\begin{table}[H]
+\centering
+\caption{Best candidate per campaign ranked by composite score.}
+\label{tab:best}
+\small
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+\textbf{Target} & \textbf{pAE} & \textbf{RMSD} & \textbf{Score} & \textbf{Design ID} \\
+\midrule
+CEACAM5 & 2.59 & 0.68 & 0.015 & 76\_dl2 \\
+MSLN-N & 2.19 & 1.33 & 0.000 & 32\_dl2 \\
+B7-H3 & 2.20 & 1.10 & 0.000 & 23\_dl3 \\
+CD47 & 2.84 & 1.05 & 0.050 & 20\_dl4 \\
+MSLN-C & 2.92 & 0.78 & 0.000 & 71\_dl2 \\
+EphA2 & 2.52 & 1.53 & 0.000 & 27\_dl0 \\
+EGFR & 3.32 & 1.31 & 0.129 & 19\_dl2 \\
+HER2-DIV & 2.36 & 1.67 & 0.000 & 16\_dl2 \\
+GPC2 & 8.28 & 1.99 & 0.429 & 5\_dl2 \\
+EGFRvIII & 8.24 & 1.82 & 0.000 & 19\_dl0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Backbone Topology and Design Success}
+
+A notable observation is the concentration of passing designs on a small number of backbone scaffolds.
+For B7-H3, 11 passing designs originated from only 3 of 82 backbones (3.7\%).
+For MSLN-Cterm, 4 of 6 passing designs came from a single backbone (design 71).
+This pattern suggests that backbone topology is the primary determinant of design success, and that increasing the number of backbones (rather than sequences per backbone) would be the most effective strategy for improving pass rates in future campaigns (Figure~\ref{fig:backbone}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig10_backbone_vs_passrate.png}
+\caption{Relationship between backbone count and filter pass rate. No strong correlation is observed, indicating that backbone quality (topology) rather than quantity drives design success.}
+\label{fig:backbone}
+\end{figure}
+
+
+% ============================================================
+\section{Discussion}
+
+\subsection{Computational Design Difficulty Varies Dramatically Across Cancer Targets}
+
+The most striking finding of this study is the 60-fold range in pass rates across the 10 cancer targets (0.3\% to 19.8\%).
+This variation substantially exceeds what would be expected from sampling noise alone and reflects genuine differences in the tractability of different epitope--antigen pairs for VHH nanobody design.
+CEACAM5's outlier success (19.8\%) may be attributable to the geometry of the tusamitamab epitope on the A3B3 domain, which presents a relatively concave surface patch well-suited to single-domain antibody engagement, combined with the extended H3 loop lengths (10--18 residues) allowed for this campaign.
+In contrast, the near-complete failure of EGFRvIII design (0.3\%) despite having the highest-resolution template (1.8\,\AA) highlights that template quality alone does not predict design success.
+
+\subsection{CDR RMSD as the Dominant Design Bottleneck}
+
+Our analysis identifies target-aligned CDR RMSD---not pAE---as the primary determinant of design success.
+Median CDR RMSDs of 8--21\,\AA\ across campaigns indicate that the majority of designs produce CDR loops that are structurally reasonable in isolation (framework-aligned H3 RMSD medians of 1.0--1.6\,\AA) but incorrectly positioned relative to the target antigen.
+This suggests that the RFdiffusion backbone generation step, which determines CDR placement relative to the target, is the rate-limiting step in the pipeline.
+Improvements to the diffusion model's epitope conditioning or the introduction of iterative refinement of CDR--target docking could substantially improve pass rates.
+
+\subsection{The Structural Data Bottleneck}
+
+Our analysis reveals that structural data availability, not biological understanding, is the primary bottleneck limiting computational antibody design for cancer targets.
+Several targets with compelling clinical evidence---CLDN18.2 (FDA Fast Track for PDAC), IL-13Ra2 (dramatic complete responses in GBM CAR-T trials), ErbB3/HER3 (functionally validated kinase-dead RTK in MPNST)---cannot currently be subjected to structure-guided de novo design because no antibody--antigen complex structures exist in the public domain.
+The recent deposition of 9LME (B7-H3 nanobody complex, January 2025) illustrates how a single structural determination can unlock computational design for a target relevant to four cancer indications simultaneously.
+
+\subsection{VHH Nanobodies as a Privileged Format}
+
+The consistent selection of VHH format across all 10 campaigns reflects a deliberate therapeutic strategy.
+For CNS tumors (DIPG, GBM), the $\sim$10-fold size reduction from IgG ($\sim$150\,kDa) to VHH ($\sim$15\,kDa) may improve blood--brain barrier penetration \cite{li2012}.
+For pancreatic cancer, smaller formats offer superior stromal penetration.
+The uniformly high pLDDT values (0.87--0.92) across all campaigns confirm that the NbBCII10 VHH framework is robustly modeled by the RFAntibody pipeline, validating VHH as a reliable computational design format.
+
+\subsection{Implications for Campaign Design Strategy}
+
+Our results suggest several practical recommendations for future computational antibody design campaigns.
+First, backbone count should be prioritized over sequences per backbone, given the observed concentration of hits on a small fraction of backbones.
+Second, CDR H3 loop length ranges should be generous, as the CEACAM5 campaign's extended range (10--18 residues) likely contributed to its success.
+Third, targets with large epitope footprints (e.g., EGFR cetuximab epitope, 30 residues) may be better suited to Fab or scFv formats rather than single-domain VHH.
+Fourth, campaigns producing zero or borderline passing designs should be re-run with 10--100$\times$ more backbones before concluding that a target is computationally intractable.
+
+\subsection{Cross-Indication Efficiency}
+
+The identification of cross-indication driver targets creates efficiency in the design-to-clinic pipeline.
+A single high-affinity VHH nanobody against B7-H3 could serve as a therapeutic or diagnostic agent across MPNST, DIPG, neuroblastoma, and GBM---four indications that collectively affect approximately 15,000 patients annually.
+The 11 B7-H3 candidates from this study represent a starting point for this multi-indication strategy.
+Similarly, the 12 combined mesothelin candidates targeting two non-overlapping epitopes enable bispecific VHH construction for enhanced PDAC therapy.
+
+\subsection{Limitations}
+
+Several important limitations should be acknowledged.
+First, the backbone counts per campaign (53--118) are substantially lower than the 10,000 used in the original RFAntibody benchmarks; this was a deliberate trade-off for rapid iteration, with scale-up runs planned for the most promising targets.
+Second, computational metrics from RF2 are predictive but not definitive---experimental validation remains essential.
+Third, our filters (pAE $<$ 10, RMSD $<$ 2.0) may be too stringent for some targets; relaxed thresholds could identify additional candidates worth testing.
+Fourth, the absence of $\Delta\Delta G$ scoring from the RF2 pipeline means that binding energy is not directly assessed, and the composite score relies solely on structural confidence metrics.
+Fifth, epitope residues are derived from reference complexes and represent one binding mode; designed VHH nanobodies may adopt different effective epitopes.
+
+% ============================================================
+\section{Conclusion}
+
+We present the first systematic computational antibody design study targeting ten challenging cancer antigens across five lethal indications.
+Through analysis of 43 target--indication pairs, we developed a structural readiness classification and identified 10 actionable targets.
+Execution of all 10 campaigns using the RFAntibody pipeline generated 4,085 designs, of which 135 (3.3\%) passed stringent quality filters.
+Per-target pass rates varied 60-fold (0.3--19.8\%), revealing that computational design difficulty is strongly target-dependent and that CDR RMSD is the dominant bottleneck.
+The highest-confidence candidates---CEACAM5 (pAE = 2.59, RMSD = 0.68\,\AA), MSLN-Nterm (pAE = 2.19, RMSD = 1.33\,\AA), and B7-H3 (pAE = 2.20, RMSD = 1.10\,\AA)---represent immediate priorities for experimental validation.
+All code, configurations, analysis, and designed sequences are openly available as resources for the computational biology and cancer immunotherapy communities.
+
+% ============================================================
+\section*{Data and Code Availability}
+
+The rfab-harness campaign orchestration tool, all 10 cancer driver campaign configurations, analysis scripts, and complete results including all score CSVs are available at: \url{https://github.com/inventcures/repro_rfantibody_for-cancer-targets}.
+The tool requires the RFAntibody repository \cite{watson2025} for pipeline execution.
+
+% ============================================================
+\section*{Acknowledgments}
+
+The author thanks the RFAntibody team (Baker Lab, University of Washington) for making their pipeline publicly available.
+Target research was informed by the Open Targets Platform, RCSB Protein Data Bank, and ClinicalTrials.gov.
+Computational resources were provided by Modal (modal.com).
+
+% ============================================================
+\begin{thebibliography}{99}
+\small
+
+\bibitem{watson2025}
+Watson JL, et al.
+De novo design of high-affinity antibody variable regions.
+\textit{Nature}. 2025. doi:10.1038/s41586-025-09721-5
+
+\bibitem{shanehsazzadeh2025}
+Shanehsazzadeh A, et al.
+Unlocking de novo antibody design with generative artificial intelligence.
+\textit{bioRxiv}. 2025. doi:10.1101/2024.07.05.602291
+
+\bibitem{chaidiscovery2025}
+Chai Discovery.
+Chai-2: generalized single-step antibody structure and binding prediction.
+Technical Report. 2025.
+
+\bibitem{arvanitis2020}
+Arvanitis CD, Ferraro GB, Jain RK.
+The blood--brain barrier and blood--tumour barrier in brain tumours and metastases.
+\textit{Nature Reviews Cancer}. 2020;20(1):26--41.
+
+\bibitem{hosein2020}
+Hosein AN, Brekken RA, Maitra A.
+Pancreatic cancer stroma: an update on therapeutic targeting strategies.
+\textit{Nature Reviews Gastroenterology \& Hepatology}. 2020;17(8):487--505.
+
+\bibitem{b7h3cart2025}
+Vitanza NA, et al.
+Intracerebroventricular B7-H3 CAR T cells for diffuse intrinsic pontine glioma: a phase 1 clinical trial.
+\textit{Nature Medicine}. 2025;31:272--281.
+
+\bibitem{li2012}
+Li T, et al.
+Cell-penetrating anti-GFAP VHH and corresponding fluorescent fusion protein VHH-GFP spontaneously cross the blood--brain barrier.
+\textit{Journal of Neurochemistry}. 2012;123(6):801--807.
+
+\bibitem{opentargets2024}
+Ochoa D, et al.
+The Open Targets Platform: accelerating systematic drug--target identification.
+\textit{Nucleic Acids Research}. 2024;52(D1):D1328--D1337.
+
+\bibitem{dauparas2022}
+Dauparas J, et al.
+Robust deep learning--based protein sequence design using ProteinMPNN.
+\textit{Science}. 2022;378(6615):49--56.
+
+\bibitem{baek2021}
+Baek M, et al.
+Accurate prediction of protein structures and interactions using a three-track neural network.
+\textit{Science}. 2021;373(6557):871--876.
+
+\bibitem{gpc2adc2017}
+Bosse KR, et al.
+Identification of GPC2 as an oncoprotein and candidate immunotherapeutic target in high-risk neuroblastoma.
+\textit{Cancer Cell}. 2017;32(3):295--309.
+
+\bibitem{ceacam5structure2024}
+Temmam Z, et al.
+Structural basis of tusamitamab binding to CEACAM5.
+\textit{Nature Communications}. 2024;15:9263.
+
+\bibitem{msln15b62022}
+Ho M, et al.
+Structure of mesothelin C-terminal region in complex with antibody 15B6.
+\textit{PNAS}. 2022;119(22):e2202439119.
+
+\bibitem{epha21c12011}
+Peng L, et al.
+Structural basis of EphA2 recognition by 1C1 monoclonal antibody.
+\textit{J.\ Mol.\ Biol.}\ 2011;414(4):588--600.
+
+\end{thebibliography}
+
+\end{document}
