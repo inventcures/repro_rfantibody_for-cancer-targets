@@ -324,10 +324,11 @@ def fig8_lddt_distributions(df):
 
 def fig9_top_candidates_table(summary):
     """Visual table of top candidate per campaign."""
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(12, 4))
     ax.axis("off")
 
     cols = ["Target", "Best Design", "pAE", "CDR RMSD", "iPAE", "pLDDT", "H3 RMSD", "Score"]
+    col_widths = [0.12, 0.22, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08]
     rows = []
     for c in CAMPAIGN_ORDER:
         s = summary[c]
@@ -336,7 +337,7 @@ def fig9_top_candidates_table(summary):
             t = top[0]
             rows.append([
                 CAMPAIGN_LABELS[c],
-                t.get("tag", "")[:30],
+                t.get("tag", "")[:25],
                 f"{t.get('pae', 0):.2f}",
                 f"{t.get('rmsd', 0):.2f}",
                 f"{t.get('interaction_pae', 0):.2f}",
@@ -345,10 +346,15 @@ def fig9_top_candidates_table(summary):
                 f"{t.get('composite_score', 0):.3f}",
             ])
 
-    table = ax.table(cellText=rows, colLabels=cols, loc="center", cellLoc="center")
+    table = ax.table(cellText=rows, colLabels=cols, colWidths=col_widths,
+                     loc="center", cellLoc="center")
     table.auto_set_font_size(False)
     table.set_fontsize(8)
     table.scale(1, 1.4)
+
+    for (row, col), cell in table.get_celld().items():
+        if col <= 1:
+            cell.set_text_props(ha="left")
 
     for (row, col), cell in table.get_celld().items():
         if row == 0:
