@@ -22,7 +22,7 @@ antibody:
 
 pipeline:
   rfdiffusion:
-    num_designs: 10000
+    num_designs: 500
     seed: 47
 
 filtering:

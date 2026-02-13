@@ -305,11 +305,21 @@ def test_rfantibody_example(use_9lme: bool = False) -> dict:
     volumes={RESULTS_MOUNT: results_volume},
     timeout=86400,
 )
-def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> dict:
+def run_campaign(
+    config_yaml: str,
+    campaign_name: str,
+    clean: bool = False,
+    skip_stages: list[int] | None = None,
+) -> dict:
     """Run a single campaign inside a Modal GPU container.
 
     Streams full subprocess output to a log file on the Volume and parses
     per-stage timing for post-hoc analysis.
+
+    Args:
+        skip_stages: List of stage numbers (1, 2, 3) to skip by creating
+            checkpoint markers before running the pipeline. Use this to
+            resume from partial runs where earlier stages already have output.
     """
     import os
     import re
@@ -338,7 +348,7 @@ def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> d
         patched_output = original_output.replace("./results", RESULTS_MOUNT, 1)
         config["output"]["directory"] = patched_output
 
-        if clean:
+        if clean and not skip_stages:
             pipeline_dir = Path(patched_output) / "pipeline"
             if pipeline_dir.exists():
                 clog.info("Cleaning stale pipeline data: %s", pipeline_dir)
@@ -347,6 +357,17 @@ def run_campaign(config_yaml: str, campaign_name: str, clean: bool = False) -> d
             if prep_dir.exists():
                 clog.info("Cleaning stale prep data: %s", prep_dir)
                 shutil.rmtree(prep_dir)
+        elif skip_stages:
+            clog.info("skip_stages=%s: preserving existing pipeline data", skip_stages)
+
+        if skip_stages:
+            pipeline_dir = Path(patched_output) / "pipeline"
+            pipeline_dir.mkdir(parents=True, exist_ok=True)
+            for stage_num in skip_stages:
+                cp_path = pipeline_dir / f".checkpoint_stage{stage_num}"
+                if not cp_path.exists():
+                    cp_path.write_text(f"completed:{_utcnow()}:skip_requested")
+                    clog.info("Created skip checkpoint: %s", cp_path.name)
 
         log_dir = Path(patched_output) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -621,12 +642,20 @@ orchestrator_image = modal.Image.debian_slim(python_version="3.11").pip_install(
     volumes={RESULTS_MOUNT: results_volume},
     timeout=86400,
 )
-def orchestrate_batch(configs_json: str, reset: bool = False) -> dict:
+def orchestrate_batch(
+    configs_json: str,
+    reset: bool = False,
+    skip_stages: list[int] | None = None,
+) -> dict:
     """Server-side orchestrator. Runs on Modal CPU, dispatches GPU campaigns.
 
     This function runs inside Modal's infrastructure, so it survives
     terminal/session closure. It dispatches all GPU campaign functions
     via .starmap() and collects results.
+
+    Args:
+        skip_stages: Stage numbers to skip (e.g., [1] to skip RFdiffusion
+            and run only ProteinMPNN + RF2 on existing backbone designs).
     """
     import json as _json
     import yaml
@@ -637,6 +666,9 @@ def orchestrate_batch(configs_json: str, reset: bool = False) -> dict:
 
     configs = _json.loads(configs_json)
     clog.info("Received %d campaign configs", len(configs))
+
+    if skip_stages:
+        clog.info("Will skip stages %s in all campaigns", skip_stages)
 
     if reset:
         clog.info("Reset requested: clearing prior batch state")
@@ -684,7 +716,7 @@ def orchestrate_batch(configs_json: str, reset: bool = False) -> dict:
 
     clog.info("Dispatching %d campaigns to GPU workers...", len(pending))
     config_args = [
-        (c["yaml"], c["name"], reset and c["name"] not in prior_running)
+        (c["yaml"], c["name"], reset and c["name"] not in prior_running, skip_stages)
         for c in pending
     ]
 
@@ -929,12 +961,15 @@ def _parse_args() -> dict:
         "reset": "--reset" in sys.argv,
         "trigger": "--trigger" in sys.argv,
         "status": "--status" in sys.argv,
+        "skip_stages": [],
     }
     for i, arg in enumerate(sys.argv):
         if arg == "--config-dir" and i + 1 < len(sys.argv):
             args["config_dir"] = sys.argv[i + 1]
         if arg == "--campaigns" and i + 1 < len(sys.argv):
             args["campaigns"] = sys.argv[i + 1]
+        if arg == "--skip-stages" and i + 1 < len(sys.argv):
+            args["skip_stages"] = [int(s) for s in sys.argv[i + 1].split(",")]
     return args
 
 
@@ -969,7 +1004,12 @@ def _check_status() -> None:
         log.info("Waiting for remaining campaigns. Re-check with --status")
 
 
-def _trigger_batch(config_dir: str, campaigns_filter: str, reset: bool) -> None:
+def _trigger_batch(
+    config_dir: str,
+    campaigns_filter: str,
+    reset: bool,
+    skip_stages: list[int] | None = None,
+) -> None:
     _setup_logging()
     configs = _discover_configs(config_dir, campaigns_filter)
     if not configs:
@@ -979,6 +1019,9 @@ def _trigger_batch(config_dir: str, campaigns_filter: str, reset: bool) -> None:
     for c in configs:
         log.info("  - %s", c.stem)
 
+    if skip_stages:
+        log.info("Will skip stages: %s", skip_stages)
+
     configs_data = [{"yaml": c.read_text(), "name": c.stem} for c in configs]
     configs_json = json.dumps(configs_data)
 
@@ -986,7 +1029,7 @@ def _trigger_batch(config_dir: str, campaigns_filter: str, reset: bool) -> None:
     f = modal.Function.from_name(
         "rfantibody-harness-cancer-targets", "orchestrate_batch"
     )
-    call = f.spawn(configs_json, reset)
+    call = f.spawn(configs_json, reset, skip_stages or None)
     log.info("Orchestrator spawned: %s", call.object_id)
     log.info("Campaigns will run entirely on Modal (survives terminal closure).")
     log.info("")
@@ -1005,7 +1048,10 @@ if __name__ == "__main__":
     elif args["status"]:
         _check_status()
     elif args["trigger"]:
-        _trigger_batch(args["config_dir"], args["campaigns"], args["reset"])
+        _trigger_batch(
+            args["config_dir"], args["campaigns"], args["reset"],
+            skip_stages=args.get("skip_stages") or None,
+        )
     else:
         print("Usage:")
         print("  # Validate configs locally:")
